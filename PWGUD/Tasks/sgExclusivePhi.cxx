@@ -617,7 +617,7 @@ struct sgExclusivePhi {
             }
           }
         } // end of two tracks only loop
-      } // vertex cut
+      }   // vertex cut
 
       if (allTracksAreKaonsBandPID.size() == 2) {
 
@@ -663,8 +663,8 @@ struct sgExclusivePhi {
           }
         }
       } // Kaon Band
-    } // double gap
-  } // end of process
+    }   // double gap
+  }     // end of process
 
 }; // end of struct
 
