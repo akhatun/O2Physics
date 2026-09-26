@@ -13,31 +13,37 @@
 /// \author Sofia Tomassini, Gleb Romanenko, Nicolò Jacazio
 /// \since 31 May 2023
 
-#include <ctime>
-#include <algorithm> // std::random_shuffle
-#include <random>
+#include "PWGCF/Femto3D/Core/femto3dPairTask.h"
+
+#include "PWGCF/Femto3D/DataModel/PIDutils.h"
+#include "PWGCF/Femto3D/DataModel/singletrackselector.h"
+
+#include <Framework/ASoA.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/Expressions.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TH1.h>
+#include <TH2.h>
+#include <TH3.h>
+#include <TString.h>
+#include <TVector3.h>
+
 #include <chrono>
-#include <vector>
+#include <cmath>
+#include <cstdint>
+#include <ctime>
 #include <map>
 #include <memory>
+#include <random>
 #include <utility>
-#include <TParameter.h>
-#include <TH1F.h>
-
-#include "PWGCF/Femto3D/Core/femto3dPairTask.h"
-#include "PWGCF/Femto3D/DataModel/singletrackselector.h"
-#include "TLorentzVector.h"
-
-#include "Framework/runDataProcessing.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/HistogramRegistry.h"
-#include "Framework/ASoA.h"
-#include "Framework/DataTypes.h"
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/Expressions.h"
-#include "Framework/StaticFor.h"
-#include "MathUtils/Utils.h"
-#include "Common/DataModel/Multiplicity.h"
+#include <vector>
 
 using namespace o2;
 using namespace o2::soa;
@@ -55,6 +61,7 @@ struct FemtoCorrelations {
   Configurable<bool> _requestVertexITSTPC{"requestVertexITSTPC", false, ""};
   Configurable<int> _requestVertexTOForTRDmatched{"requestVertexTOFmatched", 0, "0 -> no selectio; 1 -> vertex is matched to TOF or TRD; 2 -> matched to both;"};
   Configurable<bool> _requestNoCollInTimeRangeStandard{"requestNoCollInTimeRangeStandard", false, ""};
+  Configurable<bool> _requestIsGoodITSLayersAll{"requestIsGoodITSLayersAll", false, "cut time intervals with dead ITS staves"};
   Configurable<std::pair<float, float>> _IRcut{"IRcut", std::pair<float, float>{0.f, 100.f}, "[min., max.] IR range to keep events within"};
   Configurable<std::pair<int, int>> _OccupancyCut{"OccupancyCut", std::pair<int, int>{0, 10000}, "[min., max.] occupancy range to keep events within"};
 
@@ -158,6 +165,7 @@ struct FemtoCorrelations {
   std::shared_ptr<TH2> TOFhisto_second;
 
   std::vector<std::shared_ptr<TH1>> MultHistos;
+  std::vector<std::shared_ptr<TH1>> MultHistos_pair;
   std::vector<std::vector<std::shared_ptr<TH1>>> kThistos;
   std::vector<std::vector<std::shared_ptr<TH1>>> mThistos; // test
   std::vector<std::vector<std::shared_ptr<TH1>>> SEhistos_1D;
@@ -202,6 +210,11 @@ struct FemtoCorrelations {
 
       auto hMult = registry.add<TH1>(Form("Cent%i/TPCMult_cent%i", i, i), Form("TPCMult_cent%i", i), kTH1F, {{5001, -0.5, 5000.5, "Mult."}});
       MultHistos.push_back(std::move(hMult));
+
+      if (IsIdentical) {
+        auto hMult_pair = registry.add<TH1>(Form("Cent%i/TPCMult_pair_cond_cent%i", i, i), Form("TPCMult_pair_cond_cent%i", i), kTH1F, {{5001, -0.5, 5000.5, "Mult."}});
+        MultHistos_pair.push_back(std::move(hMult_pair));
+      }
 
       for (unsigned int j = 0; j < _kTbins.value.size() - 1; j++) {
         auto hSE_1D = registry.add<TH1>(Form("Cent%i/SE_1D_cent%i_kT%i", i, i, j), Form("SE_1D_cent%i_kT%i", i, j), kTH1F, {{CFkStarBinning, "k* (GeV/c)"}});
@@ -343,8 +356,8 @@ struct FemtoCorrelations {
     if (_fill3dCF && multBin > SEhistos_3D.size())
       LOGF(fatal, "multBin value passed to the mixTracks function exceeds the configured number of Cent. bins (3D)");
 
-    for (auto ii : tracks1) {
-      for (auto iii : tracks2) {
+    for (const auto& ii : tracks1) {
+      for (const auto& iii : tracks2) {
 
         Pair->SetPair(ii, iii);
         float pair_kT = Pair->GetKt();
@@ -423,6 +436,8 @@ struct FemtoCorrelations {
         continue;
       if (_requestNoCollInTimeRangeStandard && !track.template singleCollSel_as<soa::Filtered<FilteredCollisions>>().noCollInTimeRangeStandard())
         continue;
+      if (_requestIsGoodITSLayersAll && !track.template singleCollSel_as<soa::Filtered<FilteredCollisions>>().isGoodITSLayersAll())
+        continue;
       if (track.tpcFractionSharedCls() > _tpcFractionSharedCls || track.itsNCls() < _itsNCls)
         continue;
       if (track.template singleCollSel_as<soa::Filtered<FilteredCollisions>>().multPerc() < *_centBins.value.begin() || track.template singleCollSel_as<soa::Filtered<FilteredCollisions>>().multPerc() >= *(_centBins.value.end() - 1))
@@ -473,7 +488,8 @@ struct FemtoCorrelations {
         continue;
       if (_requestNoCollInTimeRangeStandard && !collision.noCollInTimeRangeStandard())
         continue;
-
+      if (_requestIsGoodITSLayersAll && !collision.isGoodITSLayersAll())
+        continue;
       if (selectedtracks_1.find(collision.globalIndex()) == selectedtracks_1.end()) {
         if (IsIdentical)
           continue;
@@ -502,6 +518,10 @@ struct FemtoCorrelations {
 
           unsigned int centBin = std::floor((i->first).second);
           MultHistos[centBin]->Fill(col1->mult());
+
+          if (selectedtracks_1[col1->index()].size() > 1) {
+            MultHistos_pair[centBin]->Fill(col1->mult());
+          }
 
           mixTracks(selectedtracks_1[col1->index()], centBin); // mixing SE identical
 

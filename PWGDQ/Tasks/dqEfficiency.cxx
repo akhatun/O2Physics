@@ -13,33 +13,39 @@
 //
 // Analysis task for processing O2::DQ MC skimmed AODs
 //
-#include <iostream>
-#include <vector>
-#include <TMath.h>
-#include <TH1F.h>
-#include <THashList.h>
-#include <TString.h>
-#include <cstdio>
-#include <string>
-#include <memory>
-#include "Framework/runDataProcessing.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/AnalysisDataModel.h"
-#include "PWGDQ/DataModel/ReducedInfoTables.h"
-#include "PWGDQ/Core/VarManager.h"
-#include "PWGDQ/Core/HistogramManager.h"
-#include "PWGDQ/Core/AnalysisCut.h"
 #include "PWGDQ/Core/AnalysisCompositeCut.h"
-#include "PWGDQ/Core/HistogramsLibrary.h"
+#include "PWGDQ/Core/AnalysisCut.h"
 #include "PWGDQ/Core/CutsLibrary.h"
+#include "PWGDQ/Core/HistogramManager.h"
+#include "PWGDQ/Core/HistogramsLibrary.h"
 #include "PWGDQ/Core/MCSignal.h"
 #include "PWGDQ/Core/MCSignalLibrary.h"
-#include "CCDB/BasicCCDBManager.h"
-#include "DataFormatsParameters/GRPMagField.h"
-#include "DetectorsBase/GeometryManager.h"
+#include "PWGDQ/Core/VarManager.h"
+#include "PWGDQ/DataModel/ReducedInfoTables.h"
 
-using std::cout;
-using std::endl;
+#include <CCDB/BasicCCDBManager.h>
+#include <DataFormatsParameters/GRPMagField.h>
+#include <DetectorsBase/GeometryManager.h>
+#include <DetectorsBase/MatLayerCylSet.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisHelpers.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/InitContext.h>
+#include <Framework/runDataProcessing.h>
+
+#include <THashList.h>
+#include <TMath.h>
+#include <TString.h>
+
+#include <RtypesCore.h>
+
+#include <cstdint>
+#include <cstdio>
+#include <memory>
+#include <string>
+#include <vector>
+
 using std::string;
 
 using namespace o2;
@@ -89,7 +95,7 @@ constexpr static uint32_t gkMuonFillMap = VarManager::ObjTypes::ReducedMuon | Va
 constexpr static uint32_t gkMuonFillMapWithCov = VarManager::ObjTypes::ReducedMuon | VarManager::ObjTypes::ReducedMuonExtra | VarManager::ObjTypes::ReducedMuonCov;
 constexpr static uint32_t gkParticleMCFillMap = VarManager::ObjTypes::ParticleMC;
 
-void DefineHistograms(HistogramManager* histMan, TString histClasses);
+void DefineHistograms(HistogramManager* histMan, const TString& histClasses);
 
 struct AnalysisEventSelection {
   Produces<aod::EventCuts> eventSel;
@@ -97,8 +103,8 @@ struct AnalysisEventSelection {
   Configurable<std::string> fConfigEventCuts{"cfgEventCuts", "eventStandard", "Event selection"};
   Configurable<bool> fConfigQA{"cfgQA", false, "If true, fill QA histograms"};
 
-  HistogramManager* fHistMan;
-  AnalysisCompositeCut* fEventCut;
+  HistogramManager* fHistMan = nullptr;
+  AnalysisCompositeCut* fEventCut = nullptr;
 
   void init(o2::framework::InitContext& context)
   {
@@ -168,7 +174,7 @@ struct AnalysisTrackSelection {
   Configurable<std::string> fConfigMCSignals{"cfgTrackMCSignals", "", "Comma separated list of MC signals"};
   Configurable<bool> fConfigQA{"cfgQA", false, "If true, fill QA histograms"};
 
-  HistogramManager* fHistMan;
+  HistogramManager* fHistMan = nullptr;
   std::vector<AnalysisCompositeCut> fTrackCuts;
   std::vector<MCSignal> fMCSignals; // list of signals to be checked
   std::vector<TString> fHistNamesReco;
@@ -299,17 +305,17 @@ struct AnalysisTrackSelection {
       }
 
       // fill histograms
-      for (unsigned int i = 0; i < fMCSignals.size(); i++) {
-        if (!(mcDecision & (static_cast<uint32_t>(1) << i))) {
+      for (unsigned int iMC = 0; iMC < fMCSignals.size(); iMC++) {
+        if (!(mcDecision & (static_cast<uint32_t>(1) << iMC))) {
           continue;
         }
         for (unsigned int j = 0; j < fTrackCuts.size(); j++) {
           if (filterMap & (uint8_t(1) << j)) {
-            fHistMan->FillHistClass(fHistNamesMCMatched[j][i].Data(), VarManager::fgValues);
+            fHistMan->FillHistClass(fHistNamesMCMatched[j][iMC].Data(), VarManager::fgValues);
           }
         } // end loop over cuts
-      }   // end loop over MC signals
-    }     // end loop over tracks
+      } // end loop over MC signals
+    } // end loop over tracks
   }
 
   void processSkimmed(MyEventsSelected::iterator const& event, MyBarrelTracks const& tracks, ReducedMCEvents const& eventsMC, ReducedMCTracks const& tracksMC)
@@ -337,7 +343,7 @@ struct AnalysisMuonSelection {
   Configurable<std::string> fConfigMCSignals{"cfgMuonMCSignals", "", "Comma separated list of MC signals"};
   Configurable<bool> fConfigQA{"cfgQA", false, "If true, fill QA histograms"};
 
-  HistogramManager* fHistMan;
+  HistogramManager* fHistMan = nullptr;
   std::vector<AnalysisCompositeCut> fTrackCuts;
   std::vector<MCSignal> fMCSignals; // list of signals to be checked
   std::vector<TString> fHistNamesReco;
@@ -472,17 +478,17 @@ struct AnalysisMuonSelection {
       }
 
       // fill histograms
-      for (unsigned int i = 0; i < fMCSignals.size(); i++) {
-        if (!(mcDecision & (static_cast<uint32_t>(1) << i))) {
+      for (unsigned int iMC = 0; iMC < fMCSignals.size(); iMC++) {
+        if (!(mcDecision & (static_cast<uint32_t>(1) << iMC))) {
           continue;
         }
         for (unsigned int j = 0; j < fTrackCuts.size(); j++) {
           if (filterMap & (uint8_t(1) << j)) {
-            fHistMan->FillHistClass(fHistNamesMCMatched[j][i].Data(), VarManager::fgValues);
+            fHistMan->FillHistClass(fHistNamesMCMatched[j][iMC].Data(), VarManager::fgValues);
           }
         } // end loop over cuts
-      }   // end loop over MC signals
-    }     // end loop over muons
+      } // end loop over MC signals
+    } // end loop over muons
   }
 
   void processSkimmed(MyEventsSelected::iterator const& event, MyMuonTracks const& muons, ReducedMCEvents const& eventsMC, ReducedMCTracks const& tracksMC)
@@ -510,7 +516,7 @@ struct AnalysisSameEventPairing {
   float mMagField = 0.0;
   o2::parameters::GRPMagField* grpmag = nullptr;
   o2::base::MatLayerCylSet* lut = nullptr;
-  int fCurrentRun; // needed to detect if the run changed and trigger update of calibrations etc.
+  int fCurrentRun = -1; // needed to detect if the run changed and trigger update of calibrations etc.
 
   OutputObj<THashList> fOutputList{"output"};
   Filter filterEventSelected = aod::dqanalysisflags::isEventSelected == 1;
@@ -540,7 +546,7 @@ struct AnalysisSameEventPairing {
   // TODO:   special AnalysisCuts to be prepared in this direction
   // TODO: cuts on the MC truth information to be added if needed
 
-  HistogramManager* fHistMan;
+  HistogramManager* fHistMan = nullptr;
   std::vector<std::vector<TString>> fBarrelHistNames;
   std::vector<std::vector<TString>> fBarrelHistNamesMCmatched;
   std::vector<std::vector<TString>> fMuonHistNames;
@@ -622,8 +628,8 @@ struct AnalysisSameEventPairing {
           }
           fBarrelHistNamesMCmatched.push_back(mcSigClasses);
         } // end loop over cuts
-      }   // end if(cutNames.IsNull())
-    }     // end if processBarrel
+      } // end if(cutNames.IsNull())
+    } // end if processBarrel
 
     if (enableMuonHistos) {
       TString cutNames = fConfigMuonCuts.value;
@@ -650,8 +656,8 @@ struct AnalysisSameEventPairing {
           }
           fMuonHistNamesMCmatched.push_back(mcSigClasses);
         } // end loop over cuts
-      }   // end if(cutNames.IsNull())
-    }     // end if processMuon
+      } // end if(cutNames.IsNull())
+    } // end if processMuon
 
     // NOTE: For the electron-muon pairing, the policy is that the user specifies n track and n muon cuts via configurables
     //     So for each barrel cut there is a corresponding muon cut
@@ -789,7 +795,7 @@ struct AnalysisSameEventPairing {
       VarManager::FillPair<TPairType, TTrackFillMap>(t1, t2);
       // secondary vertexing is not implemented for e-mu pairs so we need to hide this function from the e-mu analysis for now
       if constexpr ((TPairType == VarManager::kDecayToEE) || (TPairType == VarManager::kDecayToMuMu)) {
-        VarManager::FillPairVertexing<TPairType, TEventFillMap, TTrackFillMap>(event, t1, t2, fPropToPCA, VarManager::fgValues);
+        VarManager::FillPairVertexing<TPairType, TEventFillMap, TTrackFillMap>(event, t1, t2, VarManager::fgValues);
       }
 
       // run MC matching for this pair
@@ -810,7 +816,7 @@ struct AnalysisSameEventPairing {
 
       dileptonFilterMap = twoTrackFilter;
       dileptonMcDecision = mcDecision;
-      if (!fConfigSkimSignalOnly || (fConfigSkimSignalOnly && mcDecision > 0)) {
+      if (!fConfigSkimSignalOnly || mcDecision > 0) {
         if constexpr (TPairType == VarManager::kDecayToEE) {
           dielectronList(event, VarManager::fgValues[VarManager::kMass], VarManager::fgValues[VarManager::kPt], VarManager::fgValues[VarManager::kEta], VarManager::fgValues[VarManager::kPhi], t1.sign() + t2.sign(), dileptonFilterMap, dileptonMcDecision);
           if constexpr ((TTrackFillMap & VarManager::ObjTypes::ReducedTrackCollInfo) > 0) {
@@ -827,7 +833,9 @@ struct AnalysisSameEventPairing {
                               VarManager::fgValues[VarManager::kKFTrack0DeviationFromPV], VarManager::fgValues[VarManager::kKFTrack1DeviationFromPV], VarManager::fgValues[VarManager::kKFTrack0DeviationxyFromPV], VarManager::fgValues[VarManager::kKFTrack1DeviationxyFromPV],
                               VarManager::fgValues[VarManager::kKFMass], VarManager::fgValues[VarManager::kKFChi2OverNDFGeo], VarManager::fgValues[VarManager::kVertexingLxyz], VarManager::fgValues[VarManager::kVertexingLxyzOverErr], VarManager::fgValues[VarManager::kVertexingLxy], VarManager::fgValues[VarManager::kVertexingLxyOverErr], VarManager::fgValues[VarManager::kVertexingTauxy], VarManager::fgValues[VarManager::kVertexingTauxyErr], VarManager::fgValues[VarManager::kKFCosPA], VarManager::fgValues[VarManager::kKFJpsiDCAxyz], VarManager::fgValues[VarManager::kKFJpsiDCAxy],
                               VarManager::fgValues[VarManager::kKFPairDeviationFromPV], VarManager::fgValues[VarManager::kKFPairDeviationxyFromPV],
-                              VarManager::fgValues[VarManager::kKFMassGeoTop], VarManager::fgValues[VarManager::kKFChi2OverNDFGeoTop]);
+                              VarManager::fgValues[VarManager::kKFMassGeoTop], VarManager::fgValues[VarManager::kKFChi2OverNDFGeoTop],
+                              VarManager::fgValues[VarManager::kVertexingTauzProjected], VarManager::fgValues[VarManager::kVertexingTauxyProjected],
+                              VarManager::fgValues[VarManager::kVertexingLzProjected], VarManager::fgValues[VarManager::kVertexingLxyProjected]);
           }
         }
       }
@@ -859,7 +867,8 @@ struct AnalysisSameEventPairing {
                         t2.reducedMCTrack().pt(), t2.reducedMCTrack().eta(), t2.reducedMCTrack().phi(), t2.reducedMCTrack().e(),
                         t1.reducedMCTrack().vx(), t1.reducedMCTrack().vy(), t1.reducedMCTrack().vz(), t1.reducedMCTrack().vt(),
                         t2.reducedMCTrack().vx(), t2.reducedMCTrack().vy(), t2.reducedMCTrack().vz(), t2.reducedMCTrack().vt(),
-                        t1.isAmbiguous(), t2.isAmbiguous(), -999., -999., -999., -999., -999., -999., -999., -999., -999.,
+                        t1.isAmbiguous(), t2.isAmbiguous(), true, true,
+                        -999., -999., -999., -999., -999., -999., -999., -999., -999.,
                         -999., -999., -999., VarManager::fgValues[VarManager::kVertexingPz],
                         VarManager::fgValues[VarManager::kVertexingSV]);
         }
@@ -873,11 +882,11 @@ struct AnalysisSameEventPairing {
             if (fConfigAmbiguousHist && !(t1.isAmbiguous() || t2.isAmbiguous())) {
               fHistMan->FillHistClass(Form("%s_unambiguous", histNames[icut][0].Data()), VarManager::fgValues);
             }
-            for (unsigned int isig = 0; isig < fRecMCSignals.size(); isig++) {
-              if (mcDecision & (static_cast<uint32_t>(1) << isig)) {
-                fHistMan->FillHistClass(histNamesMCmatched[icut][isig].Data(), VarManager::fgValues);
+            for (unsigned int iSig = 0; iSig < fRecMCSignals.size(); iSig++) {
+              if (mcDecision & (static_cast<uint32_t>(1) << iSig)) {
+                fHistMan->FillHistClass(histNamesMCmatched[icut][iSig].Data(), VarManager::fgValues);
                 if (fConfigAmbiguousHist && !(t1.isAmbiguous() || t2.isAmbiguous())) {
-                  fHistMan->FillHistClass(Form("%s_unambiguous", histNamesMCmatched[icut][isig].Data()), VarManager::fgValues);
+                  fHistMan->FillHistClass(Form("%s_unambiguous", histNamesMCmatched[icut][iSig].Data()), VarManager::fgValues);
                 }
               }
             }
@@ -897,7 +906,7 @@ struct AnalysisSameEventPairing {
         }
       }
     } // end loop over barrel track pairs
-  }   // end runPairing
+  } // end runPairing
 
   template <typename TTracksMC>
   void runMCGen(TTracksMC& groupedMCTracks)
@@ -947,7 +956,7 @@ struct AnalysisSameEventPairing {
         }
       }
     } // end of true pairing loop
-  }   // end runMCGen
+  } // end runMCGen
 
   // Preslice<ReducedMCTracks> perReducedMcEvent = aod::reducedtrackMC::reducedMCeventId;
   PresliceUnsorted<ReducedMCTracks> perReducedMcEvent = aod::reducedtrackMC::reducedMCeventId;
@@ -1040,9 +1049,18 @@ struct AnalysisSameEventPairing {
 struct AnalysisDileptonTrack {
   Produces<aod::DileptonTrackCandidates> dileptontrackcandidatesList;
   OutputObj<THashList> fOutputList{"output"};
+  Service<o2::ccdb::BasicCCDBManager> ccdb;
+  o2::base::MatLayerCylSet* lut = nullptr;
+
   // TODO: For now this is only used to determine the position in the filter bit map for the hadron cut
-  Configurable<string> fConfigTrackCuts{"cfgLeptonCuts", "", "Comma separated list of barrel track cuts"};
+  Configurable<std::string> fConfigTrackCuts{"cfgLeptonCuts", "", "Comma separated list of barrel track cuts"};
   Configurable<bool> fConfigFillCandidateTable{"cfgFillCandidateTable", false, "Produce a single flat tables with all relevant information dilepton-track candidates"};
+  Configurable<std::string> ccdburl{"ccdburl", "http://alice-ccdb.cern.ch", "url of the ccdb repository"};
+  Configurable<bool> fCorrFullGeo{"cfgCorrFullGeo", false, "Use full geometry to correct for MCS effects in track propagation"};
+  Configurable<bool> fNoCorr{"cfgNoCorrFwdProp", false, "Do not correct for MCS effects in track propagation"};
+  Configurable<std::string> lutPath{"lutPath", "GLO/Param/MatLUT", "Path of the Lut parametrization"};
+  Configurable<std::string> geoPath{"geoPath", "GLO/Config/GeometryAligned", "Path of the geometry file"};
+
   Filter eventFilter = aod::dqanalysisflags::isEventSelected == 1;
   // Filter dileptonFilter = aod::reducedpair::mass > 2.92f && aod::reducedpair::mass < 3.16f && aod::reducedpair::sign == 0;
   // Filter dileptonFilter = aod::reducedpair::mass > 2.6f && aod::reducedpair::mass < 3.5f && aod::reducedpair::sign == 0;
@@ -1053,12 +1071,10 @@ struct AnalysisDileptonTrack {
   constexpr static uint32_t fgDileptonFillMap = VarManager::ObjTypes::ReducedTrack | VarManager::ObjTypes::Pair; // fill map
 
   // use two values array to avoid mixing up the quantities
-  float* fValuesDilepton;
-  float* fValuesTrack;
-  HistogramManager* fHistMan;
+  float* fValuesDilepton = nullptr;
+  float* fValuesTrack = nullptr;
+  HistogramManager* fHistMan = nullptr;
 
-  std::vector<std::vector<TString>> fMuonHistNames;
-  std::vector<std::vector<TString>> fMuonHistNamesMCmatched;
   std::vector<TString> fRecMCSignalsNames;
 
   std::vector<MCSignal> fRecMCSignals;
@@ -1067,12 +1083,27 @@ struct AnalysisDileptonTrack {
   // NOTE: the barrel track filter is shared between the filters for dilepton electron candidates (first n-bits)
   //       and the associated hadrons (n+1 bit) --> see the barrel track selection task
   //      The current condition should be replaced when bitwise operators will become available in Filter expressions
-  int fNHadronCutBit;
+  int fNHadronCutBit = 0;
 
   void init(o2::framework::InitContext& context)
   {
     if (context.mOptions.get<bool>("processDummy")) {
       return;
+    }
+
+    ccdb->setURL(ccdburl.value);
+    ccdb->setCaching(true);
+    ccdb->setLocalObjectValidityChecking();
+
+    if (fNoCorr) {
+      VarManager::SetupFwdDCAFitterNoCorr();
+    } else if (fCorrFullGeo) {
+      if (!o2::base::GeometryManager::isGeometryLoaded()) {
+        ccdb->get<TGeoManager>(geoPath);
+      }
+    } else {
+      lut = o2::base::MatLayerCylSet::rectifyPtrFromFile(ccdb->get<o2::base::MatLayerCylSet>(lutPath));
+      VarManager::SetupMatLUTFwdDCAFitter(lut);
     }
 
     TString sigNamesStr = fConfigMCRecSignals.value;
@@ -1164,12 +1195,12 @@ struct AnalysisDileptonTrack {
     std::vector<int> trackGlobalIndexes;
 
     if (dileptons.size() > 0) {
-      for (auto track : tracks) {
+      for (const auto& track : tracks) {
         trackGlobalIndexes.push_back(track.globalIndex());
         // std::cout << track.index() << " " << track.globalIndex() << std::endl;
       }
     }
-    for (auto dilepton : dileptons) {
+    for (const auto& dilepton : dileptons) {
 
       int indexLepton1 = dilepton.index0Id();
       int indexLepton2 = dilepton.index1Id();
@@ -1209,9 +1240,9 @@ struct AnalysisDileptonTrack {
         }
       } // end loop over MC signals
 
-      for (unsigned int isig = 0; isig < fRecMCSignals.size(); isig++) {
-        if (mcDecision & (static_cast<uint32_t>(1) << isig)) {
-          fHistMan->FillHistClass(Form("DileptonsSelected_matchedMC_%s", fRecMCSignalsNames[isig].Data()), fValuesDilepton);
+      for (unsigned int iSig = 0; iSig < fRecMCSignals.size(); iSig++) {
+        if (mcDecision & (static_cast<uint32_t>(1) << iSig)) {
+          fHistMan->FillHistClass(Form("DileptonsSelected_matchedMC_%s", fRecMCSignalsNames[iSig].Data()), fValuesDilepton);
         }
       }
 
@@ -1234,7 +1265,7 @@ struct AnalysisDileptonTrack {
         mcDecision = 0;
         isig = 0;
         for (auto sig = fRecMCSignals.begin(); sig != fRecMCSignals.end(); sig++, isig++) {
-          if constexpr (TTrackFillMap & VarManager::ObjTypes::ReducedTrack || TTrackFillMap & VarManager::ObjTypes::ReducedMuon || TTrackFillMap & VarManager::ObjTypes::ReducedMuon) { // for skimmed DQ model
+          if constexpr (TTrackFillMap & VarManager::ObjTypes::ReducedTrack || TTrackFillMap & VarManager::ObjTypes::ReducedMuon) { // for skimmed DQ model
             if ((*sig).CheckSignal(false, lepton1MC, lepton2MC, trackMC)) {
               mcDecision |= (static_cast<uint32_t>(1) << isig);
             }
@@ -1245,9 +1276,9 @@ struct AnalysisDileptonTrack {
           dileptontrackcandidatesList(mcDecision, fValuesTrack[VarManager::kPairMass], fValuesTrack[VarManager::kPairPt], fValuesTrack[VarManager::kPairEta], fValuesTrack[VarManager::kVertexingTauz], fValuesTrack[VarManager::kVertexingTauxy], fValuesTrack[VarManager::kVertexingLz], fValuesTrack[VarManager::kVertexingLxy]);
         }
 
-        for (unsigned int isig = 0; isig < fRecMCSignals.size(); isig++) {
-          if (mcDecision & (static_cast<uint32_t>(1) << isig)) {
-            fHistMan->FillHistClass(Form("DileptonTrackInvMass_matchedMC_%s", fRecMCSignalsNames[isig].Data()), fValuesTrack);
+        for (unsigned int iSig = 0; iSig < fRecMCSignals.size(); iSig++) {
+          if (mcDecision & (static_cast<uint32_t>(1) << iSig)) {
+            fHistMan->FillHistClass(Form("DileptonTrackInvMass_matchedMC_%s", fRecMCSignalsNames[iSig].Data()), fValuesTrack);
           }
         }
       }
@@ -1320,9 +1351,11 @@ struct AnalysisDileptonTrackTrack {
   Configurable<std::string> fConfigMCRecSignals{"cfgBarrelMCRecSignals", "", "Comma separated list of MC signals (reconstructed)"};
   Configurable<std::string> fConfigMCGenSignals{"cfgBarrelMCGenSignals", "", "Comma separated list of MC signals (generated)"};
   Configurable<std::string> fConfigDileptonMCRecSignal{"cfgDileptonMCRecSignal", "", "Comma separated list of MC signals (reconstructed)"};
+  Configurable<bool> fConfigUseKFVertexing{"cfgUseKFVertexing", false, "Use KF Particle for secondary vertex reconstruction (DCAFitter is used by default)"};
+  Configurable<bool> fConfigUseDCAVertexing{"cfgUseDCAVertexing", false, "Use DCA for secondary vertex reconstruction (DCAFitter is used by default)"};
 
   Produces<aod::DileptonTrackTrackCandidates> DileptonTrackTrackTable;
-  HistogramManager* fHistMan;
+  HistogramManager* fHistMan = nullptr;
 
   std::vector<TString> fRecMCSignalsNames;
   std::vector<MCSignal> fRecMCSignals;
@@ -1333,7 +1366,7 @@ struct AnalysisDileptonTrackTrack {
   Filter dileptonFilter = aod::reducedpair::sign == 0;
   Filter filterBarrelTrackSelected = aod::dqanalysisflags::isBarrelSelected > 0;
 
-  float* fValuesQuadruplet;
+  float* fValuesQuadruplet = nullptr;
 
   std::vector<TString> fQuadrupletCutNames;
   AnalysisCompositeCut fDileptonCut;
@@ -1410,7 +1443,7 @@ struct AnalysisDileptonTrackTrack {
               if (sig->GetNProngs() == 4) {
                 fRecMCSignals.push_back(*sig);
                 fRecMCSignalsNames.push_back(sig->GetName());
-                histNames += Form("MCTruthRecQaud_%s_%s;", fQuadrupletCutNames[icut].Data(), sig->GetName());
+                histNames += Form("MCTruthRecQuad_%s_%s;", fQuadrupletCutNames[icut].Data(), sig->GetName());
               }
             }
           }
@@ -1426,7 +1459,7 @@ struct AnalysisDileptonTrackTrack {
       if (sig) {
         if (sig->GetNProngs() == 1) { // NOTE: 1-prong signals required
           fGenMCSignals.push_back(*sig);
-          histNames += Form("MCTruthGenQaud_%s;", sig->GetName()); // TODO: Add these names to a std::vector to avoid using Form in the process function
+          histNames += Form("MCTruthGenQuad_%s;", sig->GetName()); // TODO: Add these names to a std::vector to avoid using Form in the process function
         }
       }
     }
@@ -1455,19 +1488,28 @@ struct AnalysisDileptonTrackTrack {
     VarManager::ResetValues(0, VarManager::kNVars, fValuesQuadruplet);
     VarManager::FillEvent<TEventFillMap>(event, fValuesQuadruplet);
 
+    // set up KF or DCAfitter
+    if (fConfigUseDCAVertexing) {
+      VarManager::SetupTwoProngDCAFitter(5.0f, true, 200.0f, 4.0f, 1.0e-3f, 0.9f, false); // TODO: get these parameters from Configurables
+      // VarManager::SetupThreeProngDCAFitter(5.0f, true, 200.0f, 4.0f, 1.0e-3f, 0.9f, false); // TODO: get these parameters from Configurables
+      VarManager::SetupFourProngDCAFitter(5.0f, true, 200.0f, 4.0f, 1.0e-3f, 0.9f, false); // TODO: get these parameters from Configurables
+    } else if (fConfigUseKFVertexing) {
+      VarManager::SetupFourProngKFParticle(5.0f);
+    }
+
     // LOGF(info, "Number of dileptons: %d", dileptons.size());
     int indexOffset = -999;
     std::vector<int> trackGlobalIndexes;
 
     if (dileptons.size() > 0) {
-      for (auto track : tracks) {
+      for (const auto& track : tracks) {
         trackGlobalIndexes.push_back(track.globalIndex());
         // std::cout << track.index() << " " << track.globalIndex() << std::endl;
       }
     }
 
     // loop over dileptons
-    for (auto dilepton : dileptons) {
+    for (const auto& dilepton : dileptons) {
       VarManager::FillTrack<fgDileptonFillMap>(dilepton, fValuesQuadruplet);
 
       // apply the dilepton cut
@@ -1506,6 +1548,10 @@ struct AnalysisDileptonTrackTrack {
 
         // Fill the Histograms
         VarManager::FillDileptonTrackTrack<TCandidateType>(dilepton, t1, t2, fValuesQuadruplet);
+        // reconstruct the secondary vertex
+        if (fConfigUseDCAVertexing || fConfigUseKFVertexing) {
+          VarManager::FillDileptonTrackTrackVertexing<TCandidateType, TEventFillMap, TTrackFillMap>(event, lepton1, lepton2, t1, t2, fValuesQuadruplet);
+        }
         uint32_t CutDecision = 0;
         uint32_t mcDecision = 0;
         int iCut = 0;
@@ -1537,9 +1583,9 @@ struct AnalysisDileptonTrackTrack {
                   mcDecision |= (static_cast<uint32_t>(1) << isig);
                 }
               }
-              for (unsigned int isig = 0; isig < fRecMCSignals.size(); isig++) {
-                if (mcDecision & (static_cast<uint32_t>(1) << isig)) {
-                  fHistMan->FillHistClass(Form("MCTruthRecQaud_%s_%s", fQuadrupletCutNames[iCut].Data(), fRecMCSignalsNames[isig].Data()), fValuesQuadruplet);
+              for (unsigned int iSig = 0; iSig < fRecMCSignals.size(); iSig++) {
+                if (mcDecision & (static_cast<uint32_t>(1) << iSig)) {
+                  fHistMan->FillHistClass(Form("MCTruthRecQuad_%s_%s", fQuadrupletCutNames[iCut].Data(), fRecMCSignalsNames[iSig].Data()), fValuesQuadruplet);
                 }
               }
             }
@@ -1554,7 +1600,12 @@ struct AnalysisDileptonTrackTrack {
         DileptonTrackTrackTable(fValuesQuadruplet[VarManager::kQuadMass], fValuesQuadruplet[VarManager::kQuadPt], fValuesQuadruplet[VarManager::kQuadEta], fValuesQuadruplet[VarManager::kQuadPhi], fValuesQuadruplet[VarManager::kRap],
                                 fValuesQuadruplet[VarManager::kQ], fValuesQuadruplet[VarManager::kDeltaR1], fValuesQuadruplet[VarManager::kDeltaR2], fValuesQuadruplet[VarManager::kDeltaR],
                                 dilepton.mass(), dilepton.pt(), dilepton.eta(), dilepton.phi(), dilepton.sign(),
-                                fValuesQuadruplet[VarManager::kDitrackMass], fValuesQuadruplet[VarManager::kDitrackPt], t1.pt(), t2.pt(), t1.eta(), t2.eta(), t1.phi(), t2.phi(), t1.sign(), t2.sign());
+                                lepton1.tpcNSigmaEl(), lepton1.tpcNSigmaPi(), lepton1.tpcNSigmaPr(), lepton1.tpcNClsFound(),
+                                lepton2.tpcNSigmaEl(), lepton2.tpcNSigmaPi(), lepton2.tpcNSigmaPr(), lepton2.tpcNClsFound(),
+                                fValuesQuadruplet[VarManager::kDitrackMass], fValuesQuadruplet[VarManager::kDitrackPt], t1.pt(), t2.pt(), t1.eta(), t2.eta(), t1.phi(), t2.phi(), t1.sign(), t2.sign(), t1.tpcNSigmaPi(), t2.tpcNSigmaPi(), t1.tpcNSigmaKa(), t2.tpcNSigmaKa(), t1.tpcNSigmaPr(), t1.tpcNSigmaPr(), t1.tpcNClsFound(), t2.tpcNClsFound(),
+                                fValuesQuadruplet[VarManager::kKFMass], fValuesQuadruplet[VarManager::kVertexingProcCode], fValuesQuadruplet[VarManager::kVertexingChi2PCA], fValuesQuadruplet[VarManager::kCosPointingAngle], fValuesQuadruplet[VarManager::kKFDCAxyzBetweenProngs], fValuesQuadruplet[VarManager::kKFChi2OverNDFGeo],
+                                fValuesQuadruplet[VarManager::kVertexingLz], fValuesQuadruplet[VarManager::kVertexingLxy], fValuesQuadruplet[VarManager::kVertexingLxyz], fValuesQuadruplet[VarManager::kVertexingTauz], fValuesQuadruplet[VarManager::kVertexingTauxy], fValuesQuadruplet[VarManager::kVertexingLzErr], fValuesQuadruplet[VarManager::kVertexingLxyzErr],
+                                fValuesQuadruplet[VarManager::kVertexingTauzErr], fValuesQuadruplet[VarManager::kVertexingLzProjected], fValuesQuadruplet[VarManager::kVertexingLxyProjected], fValuesQuadruplet[VarManager::kVertexingLxyzProjected], fValuesQuadruplet[VarManager::kVertexingTauzProjected], fValuesQuadruplet[VarManager::kVertexingTauxyProjected]);
       } // end loop over track - track combinations
     } // end loop over dileptons
   };
@@ -1574,9 +1625,9 @@ struct AnalysisDileptonTrackTrack {
             auto dilepton = mcTracks.rawIteratorAt(daughterIdFirst);
             auto track1 = mcTracks.rawIteratorAt(daughterIdFirst + 1);
             auto track2 = mcTracks.rawIteratorAt(daughterIdFirst + 2);
-            VarManager::FillQaudMC<TCandidateType>(dilepton, track1, track2);
+            VarManager::FillQuadMC<TCandidateType>(dilepton, track1, track2);
           }
-          fHistMan->FillHistClass(Form("MCTruthGenQaud_%s", sig.GetName()), VarManager::fgValues);
+          fHistMan->FillHistClass(Form("MCTruthGenQuad_%s", sig.GetName()), VarManager::fgValues);
         }
       }
     }
@@ -1612,7 +1663,7 @@ WorkflowSpec defineDataProcessing(ConfigContext const& cfgc)
     adaptAnalysisTask<AnalysisDileptonTrackTrack>(cfgc)};
 }
 
-void DefineHistograms(HistogramManager* histMan, TString histClasses)
+void DefineHistograms(HistogramManager* histMan, const TString& histClasses)
 {
   //
   // Define here the histograms for all the classes required in analysis.
@@ -1654,7 +1705,7 @@ void DefineHistograms(HistogramManager* histMan, TString histClasses)
       // histMan->AddHistogram(objArray->At(iclass)->GetName(), "Rapidity", "MC generator y distribution", false, 150, 2.5, 4.0, VarManager::kMCY);
       histMan->AddHistogram(objArray->At(iclass)->GetName(), "Phi", "MC generator #varphi distribution", false, 50, 0.0, 2. * TMath::Pi(), VarManager::kMCPhi);
     }
-    if (classStr.Contains("MCTruthGenQaud")) {
+    if (classStr.Contains("MCTruthGenQuad")) {
       dqhistograms::DefineHistograms(histMan, objArray->At(iclass)->GetName(), "mctruth_quad");
     }
     if (classStr.Contains("MCTruthGen")) {
@@ -1673,7 +1724,7 @@ void DefineHistograms(HistogramManager* histMan, TString histClasses)
     if (classStr.Contains("DileptonTrackInvMass")) {
       dqhistograms::DefineHistograms(histMan, objArray->At(iclass)->GetName(), "dilepton-hadron-mass");
     }
-    if (classStr.Contains("Quadruplet") || classStr.Contains("MCTruthRecQaud")) {
+    if (classStr.Contains("Quadruplet") || classStr.Contains("MCTruthRecQuad")) {
       dqhistograms::DefineHistograms(histMan, objArray->At(iclass)->GetName(), "dilepton-dihadron", "xtojpsipipi");
     }
 

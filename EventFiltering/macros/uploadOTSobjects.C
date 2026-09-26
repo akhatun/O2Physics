@@ -10,34 +10,39 @@
 // or submit itself to any jurisdiction.
 //
 
+#include "Common/Core/ZorroHelper.h"
+
+#include <CCDB/BasicCCDBManager.h>
+#include <CCDB/CcdbApi.h>
+#include <CommonConstants/LHCConstants.h>
+
+#include <TFile.h>
+#include <TGrid.h>
+#include <TH1.h>
+#include <TKey.h>
+#include <TString.h>
+#include <TSystem.h>
+#include <TTree.h>
+
+#include <RtypesCore.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <iostream>
-#include <vector>
-#include <string>
 #include <map>
-#include <array>
-#include <cmath>
-
-#include "TFile.h"
-#include "TGrid.h"
-#include "TH1.h"
-#include "TKey.h"
-#include "TSystem.h"
-#include "TTree.h"
-
-#include "CCDB/BasicCCDBManager.h"
-#include "EventFiltering/ZorroHelper.h"
-#include "CommonConstants/LHCConstants.h"
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 constexpr uint32_t chunkSize = 1000000;
 
-void uploadOTSobjects(std::string inputList, std::string passName, bool useAlien, bool chunkedProcessing)
+void uploadOTSobjects(std::string inputList, const std::string& passName, bool useAlien, bool chunkedProcessing = true)
 {
-  const std::string kBaseCCDBPath = "Users/m/mpuccio/EventFiltering/OTS/";
+  const std::string kBaseCCDBPath = "EventFiltering/Zorro/";
   std::string baseCCDBpath = passName.empty() ? kBaseCCDBPath : kBaseCCDBPath + passName + "/";
-  if (chunkedProcessing) {
-    baseCCDBpath += "Chunked/";
-  }
   if (useAlien) {
     TGrid::Connect("alien://");
   }
@@ -67,6 +72,16 @@ void uploadOTSobjects(std::string inputList, std::string passName, bool useAlien
     api.storeAsTFile(scalers, baseCCDBpath + "FilterCounters", metadata, duration.first, duration.second + 1);
     api.storeAsTFile(filters, baseCCDBpath + "SelectionCounters", metadata, duration.first, duration.second + 1);
     TH1* hCounterTVX = static_cast<TH1*>(scalersFile->Get("bc-selection-task/hCounterTVX"));
+    if (!hCounterTVX) {
+      hCounterTVX = static_cast<TH1*>(scalersFile->Get("lumi-task/hCounterTVX"));
+      if (!hCounterTVX) {
+        hCounterTVX = static_cast<TH1*>(scalersFile->Get("eventselection-run3/luminosity/hCounterTVX"));
+        if (!hCounterTVX) {
+          std::cout << "No hCounterTVX histogram found in the file, skipping upload for run " << runString << std::endl;
+          continue;
+        }
+      }
+    }
     api.storeAsTFile(hCounterTVX, baseCCDBpath + "InspectedTVX", metadata, duration.first, duration.second + 1);
 
     std::vector<ZorroHelper> zorroHelpers;
@@ -134,9 +149,9 @@ void uploadOTSobjects(std::string inputList, std::string passName, bool useAlien
   }
 }
 
-void uploadOTSobjects(std::string periodName, bool chunkedProcessing)
+void uploadOTSobjects(std::string periodName)
 {
   int year = 2000 + std::stoi(periodName.substr(3, 2));
   gSystem->Exec(Form("alien_find /alice/data/%i/%s/ ctf_skim_full/AnalysisResults_fullrun.root | sed 's:/AnalysisResults_fullrun\\.root::' > list_%s.txt", year, periodName.data(), periodName.data()));
-  uploadOTSobjects(Form("list_%s.txt", periodName.data()), "", true, chunkedProcessing);
+  uploadOTSobjects(Form("list_%s.txt", periodName.data()), "", true, true);
 }

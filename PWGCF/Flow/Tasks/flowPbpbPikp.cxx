@@ -16,40 +16,52 @@
 #include "PWGCF/GenericFramework/Core/FlowContainer.h"
 #include "PWGCF/GenericFramework/Core/GFW.h"
 #include "PWGCF/GenericFramework/Core/GFWConfig.h"
-#include "PWGCF/GenericFramework/Core/GFWCumulant.h"
-#include "PWGCF/GenericFramework/Core/GFWPowerArray.h"
 #include "PWGCF/GenericFramework/Core/GFWWeights.h"
-#include "PWGCF/GenericFramework/Core/GFWWeightsList.h"
 
-#include "Common/Core/TrackSelection.h"
-#include "Common/Core/trackUtilities.h"
+#include "Common/CCDB/EventSelectionParams.h"
+#include "Common/CCDB/TriggerAliases.h"
 #include "Common/DataModel/Centrality.h"
 #include "Common/DataModel/EventSelection.h"
 #include "Common/DataModel/Multiplicity.h"
-#include "Common/DataModel/PIDResponse.h"
 #include "Common/DataModel/PIDResponseITS.h"
+#include "Common/DataModel/PIDResponseTOF.h"
+#include "Common/DataModel/PIDResponseTPC.h"
 #include "Common/DataModel/TrackSelectionTables.h"
 
-#include "CommonConstants/PhysicsConstants.h"
-#include "Framework/ASoAHelpers.h"
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/HistogramRegistry.h"
-#include "Framework/RunningWorkflowInfo.h"
-#include "Framework/StepTHn.h"
-#include "Framework/runDataProcessing.h"
-#include "ReconstructionDataFormats/PID.h"
-#include "ReconstructionDataFormats/Track.h"
 #include <CCDB/BasicCCDBManager.h>
+#include <CommonConstants/MathConstants.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisHelpers.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/StringHelpers.h>
+#include <Framework/runDataProcessing.h>
+#include <ReconstructionDataFormats/PID.h>
 
-#include "Math/Vector4D.h"
 #include <TF1.h>
+#include <TH1.h>
+#include <TH3.h>
+#include <TNamed.h>
+#include <TObjArray.h>
 #include <TProfile.h>
 #include <TRandom3.h>
+#include <TString.h>
 
+#include <sys/types.h>
+
+#include <RtypesCore.h>
+
+#include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -105,15 +117,16 @@ struct FlowPbpbPikp {
   O2_DEFINE_CONFIGURABLE(cfgUseWeightPhiEtaPt, bool, true, "Use Phi, Eta, Pt dependent NUA weights")
   O2_DEFINE_CONFIGURABLE(cfgUseStrictPID, bool, true, "Use strict PID cuts for TPC")
   O2_DEFINE_CONFIGURABLE(cfgV0AT0Acut, int, 5, "V0AT0A cut")
-  O2_DEFINE_CONFIGURABLE(cfgUseAsymmetricPID, bool, false, "Use asymmetric PID cuts");
-  O2_DEFINE_CONFIGURABLE(cfgUseItsPID, bool, true, "Use ITS PID for particle identification");
+  O2_DEFINE_CONFIGURABLE(cfgUseAsymmetricPID, bool, false, "Use asymmetric PID cuts")
+  O2_DEFINE_CONFIGURABLE(cfgUseItsPID, bool, true, "Use ITS PID for particle identification")
+  O2_DEFINE_CONFIGURABLE(cfgUseNch, bool, true, "Use Nch for multiplicity selection instead of centrality")
 
   Configurable<std::vector<double>> cfgTrackDensityP0{"cfgTrackDensityP0", std::vector<double>{0.7217476707, 0.7384792571, 0.7542625668, 0.7640680200, 0.7701951667, 0.7755299053, 0.7805901710, 0.7849446786, 0.7957356586, 0.8113039262, 0.8211968966, 0.8280558878, 0.8329342135}, "parameter 0 for track density efficiency correction"};
   Configurable<std::vector<double>> cfgTrackDensityP1{"cfgTrackDensityP1", std::vector<double>{-2.169488e-05, -2.191913e-05, -2.295484e-05, -2.556538e-05, -2.754463e-05, -2.816832e-05, -2.846502e-05, -2.843857e-05, -2.705974e-05, -2.477018e-05, -2.321730e-05, -2.203315e-05, -2.109474e-05}, "parameter 1 for track density efficiency correction"};
   Configurable<std::vector<double>> cfgTofNsigmaCut{"cfgTofNsigmaCut", std::vector<double>{1.5, 1.5, 1.5, -1.5, -1.5, -1.5}, "TOF n-sigma cut for pions_posNsigma, kaons_posNsigma, protons_posNsigma, pions_negNsigma, kaons_negNsigma, protons_negNsigma"};
   Configurable<std::vector<double>> cfgItsNsigmaCut{"cfgItsNsigmaCut", std::vector<double>{3, 3, 3, -3, -3, -3}, "ITS n-sigma cut for pions_posNsigma, kaons_posNsigma, protons_posNsigma, pions_negNsigma, kaons_negNsigma, protons_negNsigma"};
-  Configurable<std::vector<double>> cfgTpcNsigmaCut{"cfgTpcNsigmaCut", std::vector<double>{1.5, 1.5, 1.5, -1.5, -1.5, -1.5}, "TOF n-sigma cut for pions_posNsigma, kaons_posNsigma, protons_posNsigma, pions_negNsigma, kaons_negNsigma, protons_negNsigma"};
-  Configurable<std::vector<int>> cfgUseEventCuts{"cfgUseEventCuts", std::vector<int>{1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0}, "Switch for various event cuts [kNoTimeFrameBorder, kNoITSROFrameBorder, kNoSameBunchPileup, kIsGoodZvtxFT0vsPV, kNoCollInTimeRangeStandard, kIsGoodITSLayersAll, kNoCollInRofStandard, kNoHighMultCollInPrevRof, Occupancy, Multiplicity correlation, T0AV0A 3 sigma cut, kIsVertexITSTPC, kTVXinTRD]"};
+  Configurable<std::vector<double>> cfgTpcNsigmaCut{"cfgTpcNsigmaCut", std::vector<double>{10, 10, 10, -10, -10, -10}, "TOF n-sigma cut for pions_posNsigma, kaons_posNsigma, protons_posNsigma, pions_negNsigma, kaons_negNsigma, protons_negNsigma"};
+  Configurable<std::vector<int>> cfgUseEventCuts{"cfgUseEventCuts", std::vector<int>{1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0}, "Switch for various event cuts [Filtered Events, Sel8, kNoTimeFrameBorder, kNoITSROFrameBorder, kNoSameBunchPileup, kIsGoodZvtxFT0vsPV, kNoCollInTimeRangeStandard, kIsGoodITSLayersAll, kNoCollInRofStandard, kNoHighMultCollInPrevRof, Occupancy, Multiplicity correlation, T0AV0A 3 sigma cut, kIsVertexITSTPC, kTVXinTRD]"};
 
   Configurable<GFWRegions> cfgRegions{"cfgRegions", {{"refN08", "refP08", "full", "poiN", "olN", "poiP", "olP", "poi", "ol", "poiNpi", "olNpi", "poiPpi", "olPpi", "poifullpi", "olfullpi", "poiNka", "olNka", "poiPka", "olPka", "poifullka", "olfullka", "poiNpr", "olNpr", "poiPpr", "olPpr", "poifullpr", "olfullpr"}, {-0.8, 0.4, -0.8, -0.8, -0.8, 0.4, 0.4, -0.8, -0.8, -0.8, -0.8, 0.4, 0.4, -0.8, -0.8, -0.8, -0.8, 0.4, 0.4, -0.8, -0.8, -0.8, -0.8, 0.4, 0.4, -0.8, -0.8}, {-0.4, 0.8, 0.8, -0.4, -0.4, 0.8, 0.8, 0.8, 0.8, -0.4, -0.4, 0.8, 0.8, 0.8, 0.8, -0.4, -0.4, 0.8, 0.8, 0.8, 0.8, -0.4, -0.4, 0.8, 0.8, 0.8, 0.8}, {0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}, {1, 1, 1, 128, 256, 128, 256, 128, 256, 2, 16, 2, 16, 2, 16, 4, 32, 4, 32, 4, 32, 8, 64, 8, 64, 8, 64}}, "Configurations for GFW regions"};
   Configurable<GFWCorrConfigs> cfgCorrConfig{"cfgCorrConfig", {{"full {2 -2}", "full {2 -2}", "full {2 -2}", "full {2 -2}", "refN08 {2} refP08 {-2}", "refN08 {2} refP08 {-2}", "refN08 {2} refP08 {-2}", "refN08 {2} refP08 {-2}", "refP08 {-2} refN08 {2}", "refP08 {-2} refN08 {2}", "refP08 {-2} refN08 {2}", "refP08 {-2} refN08 {2}", "full {2 2 -2 -2}", "full {2 2 -2 -2}", "full {2 2 -2 -2}", "full {2 2 -2 -2}", "poi full | ol {2 -2}", "poifullpi full | olfullpi {2 -2}", "poifullka full | olfullka {2 -2}", "poifullpr full | olfullpr {2 -2}", "poiN refN08 | olN {2} refP08 {-2}", "poiNpi refN08 | olNpi {2} refP08 {-2}", "poiNka refN08 | olNka {2} refP08 {-2}", "poiNpr refN08 | olNpr {2} refP08 {-2}", "poiP refP08 | olP {2} refN08 {-2}", "poiPpi refP08 | olPpi {2} refN08 {-2}", "poiPka refP08 | olPka {2} refN08 {-2}", "poiPpr refP08 | olPpr {2} refN08 {-2}", "poi full | ol {2 2 -2 -2}", "poifullpi full | olfullpi {2 2 -2 -2}", "poifullka full | olfullka {2 2 -2 -2}", "poifullpr full | olfullpr {2 2 -2 -2}", "refN08 {2 2} refP08 {-2 -2}", "refP08 {-2 -2} refN08 {2 2}", "poiNka refN08 | olNka {2 2} refP08 {-2 -2}", "poiPka refP08 | olPka {2 2} refN08 {-2 -2}"}, {"ChFull22", "PiFull22", "KaFull22", "PrFull22", "Ch08FGap22", "Pi08FGap22", "Ka08FGap22", "Pr08FGap22", "Ch08BGap22", "Pi08BGap22", "Ka08BGap22", "Pr08BGap22", "ChFull24", "PiFull24", "KaFull24", "PrFull24", "ChFull22", "PiFull22", "KaFull22", "PrFull22", "Ch08FGap22", "Pi08FGap22", "Ka08FGap22", "Pr08FGap22", "Ch08BGap22", "Pi08BGap22", "Ka08BGap22", "Pr08BGap22", "ChFull24", "PiFull24", "KaFull24", "PrFull24", "Ka08FGap24", "Ka08BGap24", "Ka08FGap24", "Ka08BGap24"}, {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1}, {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}, "Configurations for each correlation to calculate"};
@@ -129,13 +142,15 @@ struct FlowPbpbPikp {
   ConfigurableAxis axisParticles{"axisParticles", {3, 0, 3}, "axis for different hadrons"};
   ConfigurableAxis axisTPCsignal{"axisTPCsignal", {10000, 0, 1000}, "axis for TPC signal"};
   ConfigurableAxis axisTOFbeta{"axisTOFbeta", {200, 0, 2}, "axis for TOF beta"};
+  ConfigurableAxis axisNch{"axisNch", {200, 2000, 4000}, "N_{ch}"};
 
-  std::vector<double> tofNsigmaCut = cfgTofNsigmaCut;
-  std::vector<double> itsNsigmaCut = cfgItsNsigmaCut;
-  std::vector<double> tpcNsigmaCut = cfgTofNsigmaCut;
+  std::vector<double> tofNsigmaCut;
+  std::vector<double> itsNsigmaCut;
+  std::vector<double> tpcNsigmaCut;
+  std::vector<int> eventCuts;
 
   Filter collisionFilter = nabs(aod::collision::posZ) < cfgCutVertex;
-  Filter trackFilter = (nabs(aod::track::dcaXY) < cfgCutDCAxy) && (nabs(aod::track::dcaZ) < cfgCutDCAz) && (nabs(aod::track::eta) < cfgCutEta) && (aod::track::pt > cfgCutPtPOIMin) && (aod::track::pt < cfgCutPtPOIMax) && ((requireGlobalTrackInFilter()) || (aod::track::isGlobalTrackSDD == (uint8_t) true)) && (aod::track::tpcChi2NCl < cfgCutChi2prTPCcls);
+  Filter trackFilter = (nabs(aod::track::dcaXY) < cfgCutDCAxy) && (nabs(aod::track::dcaZ) < cfgCutDCAz) && (nabs(aod::track::eta) < cfgCutEta) && (aod::track::pt > cfgCutPtPOIMin) && (aod::track::pt < cfgCutPtPOIMax) && ((requireGlobalTrackInFilter()) || (aod::track::isGlobalTrackSDD == (uint8_t)true)) && (aod::track::tpcChi2NCl < cfgCutChi2prTPCcls);
 
   using AodCollisions = soa::Filtered<soa::Join<aod::Collisions, aod::EvSels, aod::FT0Mults, aod::FV0Mults, aod::TPCMults, aod::CentFV0As, aod::CentFT0Ms, aod::CentFT0Cs, aod::CentFT0As, aod::Mults>>;
   using AodTracksWithoutBayes = soa::Filtered<soa::Join<aod::Tracks, aod::TrackSelection, aod::TracksExtra, aod::TracksDCA, aod::pidTPCFullPi, aod::pidTPCFullKa, aod::pidTPCFullPr, aod::pidTOFbeta, aod::pidTOFFullPi, aod::pidTOFFullKa, aod::pidTOFFullPr>>;
@@ -159,23 +174,35 @@ struct FlowPbpbPikp {
   };
 
   enum EventCutTypes {
-    useNoTimeFrameBorder = 0,
-    useNoITSROFrameBorder,
-    useNoSameBunchPileup,
-    useGoodZvtxFT0vsPV,
-    useNoCollInTimeRangeStandard,
-    useGoodITSLayersAll,
-    useNoCollInRofStandard,
-    useNoHighMultCollInPrevRof,
-    useOccupancy,
-    useMultCorrCut,
-    useT0AV0ACut,
-    useVertexITSTPC,
-    useTVXinTRD
+    kFilteredEvents = 0,
+    kAfterSel8,
+    kUseNoTimeFrameBorder,
+    kUseNoITSROFrameBorder,
+    kUseNoSameBunchPileup,
+    kUseGoodZvtxFT0vsPV,
+    kUseNoCollInTimeRangeStandard,
+    kUseGoodITSLayersAll,
+    kUseNoCollInRofStandard,
+    kUseNoHighMultCollInPrevRof,
+    kUseOccupancy,
+    kUseMultCorrCut,
+    kUseT0AV0ACut,
+    kUseVertexITSTPC,
+    kUseTVXinTRD
   };
 
-  std::vector<int> fintEvCuts = cfgUseEventCuts;
-  std::vector<bool> eventCuts;
+  enum TrackCutTypes {
+    kFilteredTracks = 0,
+    kUseGlobalTracks,
+    kUsePvContributor,
+    kItsClustersCut,
+    kHasTpcSignal,
+    kTpcClustersCut,
+    kTpcCrossedRowsCut,
+    kNumPions,
+    kNumKaons,
+    kNumProtons
+  };
 
   int lastRunNumer = -1;
   std::vector<int> runNumbers;
@@ -200,14 +227,11 @@ struct FlowPbpbPikp {
 
   void init(InitContext const&)
   {
+    eventCuts = cfgUseEventCuts;
+
     ccdb->setURL(ccdbUrl.value);
     ccdb->setCaching(true);
     ccdb->setCreatedNotAfter(noLaterThan.value);
-
-    // Transforming event cuts from int to bool
-    for (int i = 0; i < static_cast<int>(fintEvCuts.size()); i++) {
-      eventCuts.push_back(static_cast<bool>(fintEvCuts[i]));
-    }
 
     LOGF(info, "flowGenericFramework::init()");
     regions.SetNames(cfgRegions->GetNames());
@@ -222,6 +246,8 @@ struct FlowPbpbPikp {
     regions.Print();
     configs.Print();
 
+    const AxisSpec axisCentForQA{100, 0, 100, "centrality (%)"};
+
     histos.add("hVtxZ", "", {HistType::kTH1D, {axisVertex}});
     histos.add("hMult", "", {HistType::kTH1D, {{3000, 0.5, 3000.5}}});
     histos.add("hCent", "", {HistType::kTH1D, {{90, 0, 90}}});
@@ -230,62 +256,51 @@ struct FlowPbpbPikp {
     histos.add("hEta", "", {HistType::kTH1D, {axisEta}});
     histos.add("hPt", "", {HistType::kTH1D, {axisPt}});
     histos.add("c22_full_ch", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c22_full_pi", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c22_full_ka", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c22_full_pr", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c22_gap08F_ch", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c22_gap08F_pi", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c22_gap08F_ka", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c22_gap08F_pr", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c22_gap08B_ch", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c22_gap08B_pi", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c22_gap08B_ka", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c22_gap08B_pr", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c24_full_ch", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c24_full_pi", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c24_full_ka", "", {HistType::kTProfile, {axisMultiplicity}});
-    histos.add("c24_full_pr", "", {HistType::kTProfile, {axisMultiplicity}});
+    histos.add("c22_full_ch_Nch", "", {HistType::kTProfile, {axisNch}});
 
     histos.add("TpcdEdx", "", {HistType::kTH2D, {axisPt, axisTPCsignal}});
     histos.add("TofBeta", "", {HistType::kTH2D, {axisPt, axisTOFbeta}});
 
+    histos.add("globalTracks_centT0C", "after cut;Centrality T0C;mulplicity global tracks", {HistType::kTH2D, {axisCentForQA, axisNch}});
+
     histos.add("TofTpcNsigma_before", "", {HistType::kTHnSparseD, {{axisParticles, axisNsigmaTPC, axisNsigmaTOF, axisPt}}});
     if (!cfgUseItsPID)
       histos.add("TofTpcNsigma_after", "", {HistType::kTHnSparseD, {{axisParticles, axisNsigmaTPC, axisNsigmaTOF, axisPt}}});
-    histos.add("partCount", "", {HistType::kTHnSparseD, {{axisParticles, axisMultiplicity, axisPt}}});
 
     histos.add("TofItsNsigma_before", "", {HistType::kTHnSparseD, {{axisParticles, axisNsigmaITS, axisNsigmaTOF, axisPt}}});
     if (cfgUseItsPID)
       histos.add("TofItsNsigma_after", "", {HistType::kTHnSparseD, {{axisParticles, axisNsigmaITS, axisNsigmaTOF, axisPt}}});
 
-    histos.add("hEventCount", "Number of Events;; Count", {HistType::kTH1D, {{15, 0, 15}}});
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(1, "Filtered event");
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(2, "After sel8");
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(3, "kNoTimeFrameBorder");
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(4, "kNoITSROFrameBorder");
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(5, "kNoSameBunchPileup");
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(6, "kIsGoodZvtxFT0vsPV");
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(7, "kNoCollInTimeRangeStandard");
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(8, "kIsGoodITSLayersAll");
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(9, "kNoCollInRofStandard");
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(10, "kNoHighMultCollInPrevRof");
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(11, "Occupancy Cut");
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(12, "Multiplicity correlation Cut");
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(13, "T0AV0A cut");
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(14, "kIsVertexITSTPC");
-    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(15, "kTVXinTRD");
+    histos.add("partCount", "", {HistType::kTHnSparseD, {{axisParticles, axisMultiplicity, axisPt}}});
 
-    histos.add("hTrackCount", "Number of Tracks;; Count", {HistType::kTH1D, {{10, 0, 10}}});
-    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(1, "Filtered track");
-    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(2, "Global tracks");
-    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(3, "PV contributor");
-    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(4, "ITS clusters");
-    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(5, "TPC signal");
-    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(6, "TPC clusters");
-    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(7, "TPC crossed rows");
-    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(8, "Pions");
-    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(9, "Kaons");
-    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(10, "Protons");
+    histos.add("hEventCount", "Number of Events;; Count", {HistType::kTH1D, {{15, -0.5, 14.5}}});
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kFilteredEvents + 1, "Filtered event");
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kAfterSel8 + 1, "After sel8");
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kUseNoTimeFrameBorder + 1, "kNoTimeFrameBorder");
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kUseNoITSROFrameBorder + 1, "kNoITSROFrameBorder");
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kUseNoSameBunchPileup + 1, "kNoSameBunchPileup");
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kUseGoodZvtxFT0vsPV + 1, "kIsGoodZvtxFT0vsPV");
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kUseNoCollInRofStandard + 1, "kNoCollInTimeRangeStandard");
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kUseGoodITSLayersAll + 1, "kIsGoodITSLayersAll");
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kUseNoCollInRofStandard + 1, "kNoCollInRofStandard");
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kUseNoHighMultCollInPrevRof + 1, "kNoHighMultCollInPrevRof");
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kUseOccupancy + 1, "Occupancy Cut");
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kUseMultCorrCut + 1, "Multiplicity correlation Cut");
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kUseT0AV0ACut + 1, "T0AV0A cut");
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kUseVertexITSTPC + 1, "kIsVertexITSTPC");
+    histos.get<TH1>(HIST("hEventCount"))->GetXaxis()->SetBinLabel(kUseTVXinTRD + 1, "kTVXinTRD");
+
+    histos.add("hTrackCount", "Number of Tracks;; Count", {HistType::kTH1D, {{10, -0.5, 9.5}}});
+    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(kFilteredTracks + 1, "Filtered track");
+    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(kUseGlobalTracks + 1, "Global tracks");
+    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(kUsePvContributor + 1, "PV contributor");
+    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(kItsClustersCut + 1, "ITS clusters");
+    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(kHasTpcSignal + 1, "TPC signal");
+    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(kTpcClustersCut + 1, "TPC clusters");
+    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(kTpcCrossedRowsCut + 1, "TPC crossed rows");
+    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(kNumPions + 1, "Pions");
+    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(kNumKaons + 1, "Kaons");
+    histos.get<TH1>(HIST("hTrackCount"))->GetXaxis()->SetBinLabel(kNumProtons + 1, "Protons");
 
     if (cfgOutputNUAWeights && !cfgOutputRunByRun) {
       histos.add<TH3>("NUA/hPhiEtaVtxz_ref", ";#varphi;#eta;v_{z}", {HistType::kTH3D, {axisPhi, axisEta, axisVertex}});
@@ -349,10 +364,16 @@ struct FlowPbpbPikp {
 
     fFC->SetName("FlowContainer");
     fFC->SetXAxis(fPtAxis);
-    fFC->Initialize(oba, axisMultiplicity, cfgNbootstrap);
+
+    if (!cfgUseNch) {
+      fFC->Initialize(oba, axisMultiplicity, cfgNbootstrap);
+    } else {
+      fFC->Initialize(oba, axisNch, cfgNbootstrap);
+    }
+
     delete oba;
 
-    if (eventCuts[useMultCorrCut]) {
+    if (eventCuts[kUseMultCorrCut]) {
       fMultPVCutLow = new TF1("fMultPVCutLow", "[0]+[1]*x+[2]*x*x+[3]*x*x*x+[4]*x*x*x*x - 3.5*([5]+[6]*x+[7]*x*x+[8]*x*x*x+[9]*x*x*x*x)", 0, 100);
       fMultPVCutLow->SetParameters(3257.29, -121.848, 1.98492, -0.0172128, 6.47528e-05, 154.756, -1.86072, -0.0274713, 0.000633499, -3.37757e-06);
       fMultPVCutHigh = new TF1("fMultPVCutHigh", "[0]+[1]*x+[2]*x*x+[3]*x*x*x+[4]*x*x*x*x + 3.5*([5]+[6]*x+[7]*x*x+[8]*x*x*x+[9]*x*x*x*x)", 0, 100);
@@ -363,7 +384,7 @@ struct FlowPbpbPikp {
       fMultCutHigh = new TF1("fMultCutHigh", "[0]+[1]*x+[2]*x*x+[3]*x*x*x + 3.*([4]+[5]*x+[6]*x*x+[7]*x*x*x+[8]*x*x*x*x)", 0, 100);
       fMultCutHigh->SetParameters(1654.46, -47.2379, 0.449833, -0.0014125, 150.773, -3.67334, 0.0530503, -0.000614061, 3.15956e-06);
     }
-    if (eventCuts[useT0AV0ACut]) {
+    if (eventCuts[kUseT0AV0ACut]) {
       fT0AV0AMean = new TF1("fT0AV0AMean", "[0]+[1]*x", 0, 200000);
       fT0AV0AMean->SetParameters(-1601.0581, 9.417652e-01);
       fT0AV0ASigma = new TF1("fT0AV0ASigma", "[0]+[1]*x+[2]*x*x+[3]*x*x*x+[4]*x*x*x*x", 0, 200000);
@@ -388,7 +409,11 @@ struct FlowPbpbPikp {
       funcV4 = new TF1("funcV4", "[0]+[1]*x+[2]*x*x+[3]*x*x*x+[4]*x*x*x*x", 0, 100);
       funcV4->SetParameters(0.008845, 0.000259668, -3.24435e-06, 4.54837e-08, -6.01825e-10);
     }
-  }
+
+    tofNsigmaCut = cfgTofNsigmaCut;
+    itsNsigmaCut = cfgItsNsigmaCut;
+    tpcNsigmaCut = cfgTpcNsigmaCut;
+  } // End of init()
 
   enum Particles {
     PIONS,
@@ -414,42 +439,42 @@ struct FlowPbpbPikp {
   template <typename TTrack>
   bool selectionTrack(const TTrack& track)
   {
-    histos.fill(HIST("hTrackCount"), 0.5); // Filtered tracks
+    histos.fill(HIST("hTrackCount"), kFilteredTracks); // Filtered tracks
     if (cfgUseGlobalTrack && !(track.isGlobalTrack())) {
       return 0;
     }
     if (cfgUseGlobalTrack)
-      histos.fill(HIST("hTrackCount"), 1.5); // After global track selection
+      histos.fill(HIST("hTrackCount"), kUseGlobalTracks); // After global track selection
 
     if (!(track.isPVContributor())) {
       return 0;
     }
-    histos.fill(HIST("hTrackCount"), 2.5); // After PV contributor selection
+    histos.fill(HIST("hTrackCount"), kUsePvContributor); // After PV contributor selection
 
     if (!(track.itsNCls() > cfgITScluster)) {
       return 0;
     }
-    histos.fill(HIST("hTrackCount"), 3.5); // After ITS cluster selection
+    histos.fill(HIST("hTrackCount"), kItsClustersCut); // After ITS cluster selection
 
     if (!(track.hasTPC())) {
       return 0;
     }
-    histos.fill(HIST("hTrackCount"), 4.5); // If track has TPC signal
+    histos.fill(HIST("hTrackCount"), kHasTpcSignal); // If track has TPC signal
 
     if (!(track.tpcNClsFound() > cfgTpcCluster)) {
       return 0;
     }
-    histos.fill(HIST("hTrackCount"), 5.5); // After TPC cluster selection
+    histos.fill(HIST("hTrackCount"), kTpcClustersCut); // After TPC cluster selection
 
     if (!(track.tpcNClsCrossedRows() > cfgTpcCrossRows)) {
       return 0;
     }
-    histos.fill(HIST("hTrackCount"), 6.5); // After TPC crossed rows selection
+    histos.fill(HIST("hTrackCount"), kTpcCrossedRowsCut); // After TPC crossed rows selection
     return 1;
   }
 
   template <typename TCollision, typename TTrack>
-  void fillQA(const TCollision collision, const TTrack track, int pidIndex, double wacc)
+  void fillQA(const TCollision& collision, const TTrack& track, int pidIndex, double wacc)
   {
     histos.fill(HIST("partCount"), pidIndex - 1, collision.centFT0C(), track.pt());
     switch (pidIndex) {
@@ -458,7 +483,7 @@ struct FlowPbpbPikp {
           histos.fill(HIST("TofTpcNsigma_after"), pidIndex - 1, track.tpcNSigmaPi(), track.tofNSigmaPi(), track.pt());
         if (cfgUseItsPID)
           histos.fill(HIST("TofItsNsigma_after"), pidIndex - 1, itsResponse.nSigmaITS<o2::track::PID::Pion>(track), track.tofNSigmaPi(), track.pt());
-        histos.fill(HIST("hTrackCount"), 7.5); // Pion count
+        histos.fill(HIST("hTrackCount"), kNumPions); // Pion count
         if (!cfgAcceptance.value.empty() && cfgUseWeightPhiEtaVtxz)
           histos.fill(HIST("PhiCorrected/hPhiEtaVtxz_pi_corrd"), track.phi(), track.eta(), collision.posZ(), wacc); // pion weights
         if (!cfgAcceptance.value.empty() && cfgUseWeightPhiPtCent)
@@ -471,7 +496,7 @@ struct FlowPbpbPikp {
           histos.fill(HIST("TofTpcNsigma_after"), pidIndex - 1, track.tpcNSigmaKa(), track.tofNSigmaKa(), track.pt());
         if (cfgUseItsPID)
           histos.fill(HIST("TofItsNsigma_after"), pidIndex - 1, itsResponse.nSigmaITS<o2::track::PID::Kaon>(track), track.tofNSigmaKa(), track.pt());
-        histos.fill(HIST("hTrackCount"), 8.5); // Kaon count
+        histos.fill(HIST("hTrackCount"), kNumKaons); // Kaon count
         if (!cfgAcceptance.value.empty() && cfgUseWeightPhiEtaVtxz)
           histos.fill(HIST("PhiCorrected/hPhiEtaVtxz_ka_corrd"), track.phi(), track.eta(), collision.posZ(), wacc); // kaon weights
         if (!cfgAcceptance.value.empty() && cfgUseWeightPhiPtCent)
@@ -484,7 +509,7 @@ struct FlowPbpbPikp {
           histos.fill(HIST("TofTpcNsigma_after"), pidIndex - 1, track.tpcNSigmaPr(), track.tofNSigmaPr(), track.pt());
         if (cfgUseItsPID)
           histos.fill(HIST("TofItsNsigma_after"), pidIndex - 1, itsResponse.nSigmaITS<o2::track::PID::Proton>(track), track.tofNSigmaPr(), track.pt());
-        histos.fill(HIST("hTrackCount"), 9.5); // Proton count
+        histos.fill(HIST("hTrackCount"), kNumProtons); // Proton count
         if (!cfgAcceptance.value.empty() && cfgUseWeightPhiEtaVtxz)
           histos.fill(HIST("PhiCorrected/hPhiEtaVtxz_pr_corrd"), track.phi(), track.eta(), collision.posZ(), wacc); // proton weights
         if (!cfgAcceptance.value.empty() && cfgUseWeightPhiPtCent)
@@ -496,7 +521,7 @@ struct FlowPbpbPikp {
   } // end of fillQA
 
   template <typename TTrack>
-  int getNsigmaPIDTpcTof(TTrack track)
+  int getNsigmaPIDTpcTof(const TTrack& track)
   {
     // Computing Nsigma arrays for pion, kaon, and protons
     std::array<float, 3> nSigmaTPC = {track.tpcNSigmaPi(), track.tpcNSigmaKa(), track.tpcNSigmaPr()};
@@ -527,7 +552,7 @@ struct FlowPbpbPikp {
   }
 
   template <typename TTrack>
-  int getNsigmaPIDAssymmetric(TTrack track)
+  int getNsigmaPIDAssymmetric(const TTrack& track)
   {
     // Computing Nsigma arrays for pion, kaon, and protons
     std::array<float, 3> nSigmaTPC = {track.tpcNSigmaPi(), track.tpcNSigmaKa(), track.tpcNSigmaPr()};
@@ -681,7 +706,7 @@ struct FlowPbpbPikp {
   }
 
   template <typename TTrack, typename TCollision>
-  double getAcceptance(TTrack track, const TCollision collision, int index)
+  double getAcceptance(const TTrack& track, const TCollision& collision, int index)
   { // 0 = ref, 1 = ch, 2 = pi, 3 = ka, 4 = pr
     if (index < 0 || index >= kCount_OutputSpecies) {
       return 1;
@@ -710,7 +735,7 @@ struct FlowPbpbPikp {
   }
 
   template <typename TTrack, typename TCollision>
-  void fillWeights(const TTrack track, const TCollision collision, const int& pid_index, const int& run)
+  void fillWeights(const TTrack& track, const TCollision& collision, const int& pid_index, const int& run)
   {
     double cent = collision.centFT0C();
     double vtxz = collision.posZ();
@@ -758,72 +783,72 @@ struct FlowPbpbPikp {
   }
 
   template <typename TCollision>
-  bool selectionEvent(TCollision collision, const int mult, const float cent)
+  bool selectionEvent(const TCollision& collision, const int mult, const float cent)
   {
-    histos.fill(HIST("hEventCount"), 0.5);
+    histos.fill(HIST("hEventCount"), kFilteredEvents);
     if (!collision.sel8()) {
       return 0;
     }
-    histos.fill(HIST("hEventCount"), 1.5);
+    histos.fill(HIST("hEventCount"), kAfterSel8);
 
-    if (eventCuts[useNoTimeFrameBorder] && !collision.selection_bit(aod::evsel::kNoTimeFrameBorder)) {
+    if (eventCuts[kUseNoTimeFrameBorder] && !collision.selection_bit(aod::evsel::kNoTimeFrameBorder)) {
       return 0;
     }
-    if (eventCuts[useNoTimeFrameBorder])
-      histos.fill(HIST("hEventCount"), 2.5);
+    if (eventCuts[kUseNoTimeFrameBorder])
+      histos.fill(HIST("hEventCount"), kUseNoTimeFrameBorder);
 
-    if (eventCuts[useNoITSROFrameBorder] && !collision.selection_bit(aod::evsel::kNoITSROFrameBorder)) {
+    if (eventCuts[kUseNoITSROFrameBorder] && !collision.selection_bit(aod::evsel::kNoITSROFrameBorder)) {
       return 0;
     }
-    if (eventCuts[useNoITSROFrameBorder])
-      histos.fill(HIST("hEventCount"), 3.5);
+    if (eventCuts[kUseNoITSROFrameBorder])
+      histos.fill(HIST("hEventCount"), kUseNoITSROFrameBorder);
 
-    if (eventCuts[useNoSameBunchPileup] && !collision.selection_bit(aod::evsel::kNoSameBunchPileup)) {
+    if (eventCuts[kUseNoSameBunchPileup] && !collision.selection_bit(aod::evsel::kNoSameBunchPileup)) {
       return 0;
     }
-    if (eventCuts[useNoSameBunchPileup])
-      histos.fill(HIST("hEventCount"), 4.5);
+    if (eventCuts[kUseNoSameBunchPileup])
+      histos.fill(HIST("hEventCount"), kUseNoSameBunchPileup);
 
-    if (eventCuts[useGoodZvtxFT0vsPV] && !collision.selection_bit(o2::aod::evsel::kIsGoodZvtxFT0vsPV)) {
+    if (eventCuts[kUseGoodZvtxFT0vsPV] && !collision.selection_bit(o2::aod::evsel::kIsGoodZvtxFT0vsPV)) {
       return 0;
     }
-    if (eventCuts[useGoodZvtxFT0vsPV])
-      histos.fill(HIST("hEventCount"), 5.5);
+    if (eventCuts[kUseGoodZvtxFT0vsPV])
+      histos.fill(HIST("hEventCount"), kUseGoodZvtxFT0vsPV);
 
-    if (eventCuts[useNoCollInTimeRangeStandard] && !collision.selection_bit(o2::aod::evsel::kNoCollInTimeRangeStandard)) {
+    if (eventCuts[kUseNoCollInTimeRangeStandard] && !collision.selection_bit(o2::aod::evsel::kNoCollInTimeRangeStandard)) {
       return 0;
     }
-    if (eventCuts[useNoCollInTimeRangeStandard])
-      histos.fill(HIST("hEventCount"), 6.5);
+    if (eventCuts[kUseNoCollInTimeRangeStandard])
+      histos.fill(HIST("hEventCount"), kUseNoCollInTimeRangeStandard);
 
-    if (eventCuts[useGoodITSLayersAll] && !collision.selection_bit(o2::aod::evsel::kIsGoodITSLayersAll)) {
+    if (eventCuts[kUseGoodITSLayersAll] && !collision.selection_bit(o2::aod::evsel::kIsGoodITSLayersAll)) {
       return 0;
     }
-    if (eventCuts[useGoodITSLayersAll])
-      histos.fill(HIST("hEventCount"), 7.5);
+    if (eventCuts[kUseGoodITSLayersAll])
+      histos.fill(HIST("hEventCount"), kUseGoodITSLayersAll);
 
-    if (eventCuts[useNoCollInRofStandard] && !collision.selection_bit(o2::aod::evsel::kNoCollInRofStandard)) {
+    if (eventCuts[kUseNoCollInRofStandard] && !collision.selection_bit(o2::aod::evsel::kNoCollInRofStandard)) {
       return 0;
     }
-    if (eventCuts[useNoCollInRofStandard])
-      histos.fill(HIST("hEventCount"), 8.5);
+    if (eventCuts[kUseNoCollInRofStandard])
+      histos.fill(HIST("hEventCount"), kUseNoCollInRofStandard);
 
-    if (eventCuts[useNoHighMultCollInPrevRof] && !collision.selection_bit(o2::aod::evsel::kNoHighMultCollInPrevRof)) {
+    if (eventCuts[kUseNoHighMultCollInPrevRof] && !collision.selection_bit(o2::aod::evsel::kNoHighMultCollInPrevRof)) {
       return 0;
     }
-    if (eventCuts[useNoHighMultCollInPrevRof])
-      histos.fill(HIST("hEventCount"), 9.5);
+    if (eventCuts[kUseNoHighMultCollInPrevRof])
+      histos.fill(HIST("hEventCount"), kUseNoHighMultCollInPrevRof);
 
     auto multNTracksPV = collision.multNTracksPV();
     auto occupancy = collision.trackOccupancyInTimeRange();
 
-    if (eventCuts[useOccupancy] && (occupancy < cfgCutOccupancyMin || occupancy > cfgCutOccupancyMax)) {
+    if (eventCuts[kUseOccupancy] && (occupancy < cfgCutOccupancyMin || occupancy > cfgCutOccupancyMax)) {
       return 0;
     }
-    if (eventCuts[useOccupancy])
-      histos.fill(HIST("hEventCount"), 10.5);
+    if (eventCuts[kUseOccupancy])
+      histos.fill(HIST("hEventCount"), kUseOccupancy);
 
-    if (eventCuts[useMultCorrCut]) {
+    if (eventCuts[kUseMultCorrCut]) {
       if (multNTracksPV < fMultPVCutLow->Eval(cent))
         return 0;
       if (multNTracksPV > fMultPVCutHigh->Eval(cent))
@@ -833,25 +858,25 @@ struct FlowPbpbPikp {
       if (mult > fMultCutHigh->Eval(cent))
         return 0;
     }
-    if (eventCuts[useMultCorrCut])
-      histos.fill(HIST("hEventCount"), 11.5);
+    if (eventCuts[kUseMultCorrCut])
+      histos.fill(HIST("hEventCount"), kUseMultCorrCut);
 
     // V0A T0A 5 sigma cut
-    if (eventCuts[useT0AV0ACut] && (std::fabs(collision.multFV0A() - fT0AV0AMean->Eval(collision.multFT0A())) > cfgV0AT0Acut * fT0AV0ASigma->Eval(collision.multFT0A())))
+    if (eventCuts[kUseT0AV0ACut] && (std::fabs(collision.multFV0A() - fT0AV0AMean->Eval(collision.multFT0A())) > cfgV0AT0Acut * fT0AV0ASigma->Eval(collision.multFT0A())))
       return 0;
-    if (eventCuts[useT0AV0ACut])
-      histos.fill(HIST("hEventCount"), 12.5);
+    if (eventCuts[kUseT0AV0ACut])
+      histos.fill(HIST("hEventCount"), kUseT0AV0ACut);
 
-    if (eventCuts[useVertexITSTPC] && !collision.selection_bit(o2::aod::evsel::kIsVertexITSTPC))
+    if (eventCuts[kUseVertexITSTPC] && !collision.selection_bit(o2::aod::evsel::kIsVertexITSTPC))
       return 0;
-    if (eventCuts[useVertexITSTPC])
-      histos.fill(HIST("hEventCount"), 13.5);
+    if (eventCuts[kUseVertexITSTPC])
+      histos.fill(HIST("hEventCount"), kUseVertexITSTPC);
 
-    if (eventCuts[useTVXinTRD] && collision.alias_bit(kTVXinTRD)) {
+    if (eventCuts[kUseTVXinTRD] && collision.alias_bit(kTVXinTRD)) {
       return 0;
     }
-    if (eventCuts[useTVXinTRD])
-      histos.fill(HIST("hEventCount"), 14.5);
+    if (eventCuts[kUseTVXinTRD])
+      histos.fill(HIST("hEventCount"), kUseTVXinTRD);
 
     return 1;
   }
@@ -883,6 +908,7 @@ struct FlowPbpbPikp {
     histos.fill(HIST("hVtxZ"), vtxz);
     histos.fill(HIST("hMult"), nTot);
     histos.fill(HIST("hCent"), cent);
+    histos.fill(HIST("globalTracks_centT0C"), cent, nTot);
     fGFW->Clear();
 
     float weff = 1;
@@ -993,24 +1019,16 @@ struct FlowPbpbPikp {
 
     // Filling cumulants with ROOT TProfile
     fillProfile(corrconfigs.at(0), HIST("c22_full_ch"), cent);
-    fillProfile(corrconfigs.at(1), HIST("c22_full_pi"), cent);
-    fillProfile(corrconfigs.at(2), HIST("c22_full_ka"), cent);
-    fillProfile(corrconfigs.at(3), HIST("c22_full_pr"), cent);
-    fillProfile(corrconfigs.at(4), HIST("c22_gap08F_ch"), cent);
-    fillProfile(corrconfigs.at(5), HIST("c22_gap08F_pi"), cent);
-    fillProfile(corrconfigs.at(6), HIST("c22_gap08F_ka"), cent);
-    fillProfile(corrconfigs.at(7), HIST("c22_gap08F_pr"), cent);
-    fillProfile(corrconfigs.at(8), HIST("c22_gap08B_ch"), cent);
-    fillProfile(corrconfigs.at(9), HIST("c22_gap08B_pi"), cent);
-    fillProfile(corrconfigs.at(10), HIST("c22_gap08B_ka"), cent);
-    fillProfile(corrconfigs.at(11), HIST("c22_gap08B_pr"), cent);
-    fillProfile(corrconfigs.at(12), HIST("c24_full_ch"), cent);
-    fillProfile(corrconfigs.at(13), HIST("c24_full_pi"), cent);
-    fillProfile(corrconfigs.at(14), HIST("c24_full_ka"), cent);
-    fillProfile(corrconfigs.at(15), HIST("c24_full_pr"), cent);
+    fillProfile(corrconfigs.at(0), HIST("c22_full_ch_Nch"), nTot);
 
-    for (uint l_ind = 0; l_ind < corrconfigs.size(); l_ind++) {
-      fillFC(corrconfigs.at(l_ind), cent, lRandom);
+    if (!cfgUseNch) {
+      for (uint l_ind = 0; l_ind < corrconfigs.size(); l_ind++) {
+        fillFC(corrconfigs.at(l_ind), cent, lRandom);
+      }
+    } else {
+      for (uint l_ind = 0; l_ind < corrconfigs.size(); l_ind++) {
+        fillFC(corrconfigs.at(l_ind), nTot, lRandom);
+      }
     }
 
   } // end of process

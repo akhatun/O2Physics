@@ -15,16 +15,22 @@
 /// \since 27/03/2025
 ///
 
-#include <vector>
-#include <TLorentzVector.h>
-
-#include "Framework/AnalysisTask.h"
-#include "Framework/ASoAHelpers.h"
-#include "Framework/runDataProcessing.h"
 #include "PWGLF/DataModel/LFResonanceTables.h"
 
-#include "CommonConstants/PhysicsConstants.h"
-#include "CommonConstants/MathConstants.h"
+#include <CommonConstants/MathConstants.h>
+#include <CommonConstants/PhysicsConstants.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TLorentzVector.h>
+
+#include <utility>
+#include <vector>
 
 using namespace o2;
 using namespace o2::framework;
@@ -207,7 +213,7 @@ struct DoubleResonanceScan {
   }
 
   template <bool IsResoMicrotrack, typename TrackType>
-  bool trackCut(const TrackType track)
+  bool trackCut(const TrackType& track)
   {
     if constexpr (!IsResoMicrotrack) {
       if (std::abs(track.pt()) < cMinPtcut)
@@ -232,13 +238,13 @@ struct DoubleResonanceScan {
       if (std::abs(track.pt()) < cMinPtcut)
         return false;
       if (cUsePtDependentDCArCut) {
-        if (o2::aod::resodmciroaughter::ResoMicroTrackSelFlag::decodeDCAxy(track.trackSelectionFlags()) > -Epsilon)
+        if (o2::aod::resomicrodaughter::ResoMicroTrackSelFlag::decodeDCAxy(track.trackSelectionFlags()) > -Epsilon)
           return false;
       } else {
-        if (o2::aod::resodmciroaughter::ResoMicroTrackSelFlag::decodeDCAxy(track.trackSelectionFlags()) > cMaxDCArToPVcut - Epsilon)
+        if (o2::aod::resomicrodaughter::ResoMicroTrackSelFlag::decodeDCAxy(track.trackSelectionFlags()) > cMaxDCArToPVcut - Epsilon)
           return false;
       }
-      if (o2::aod::resodmciroaughter::ResoMicroTrackSelFlag::decodeDCAz(track.trackSelectionFlags()) > cMaxDCAzToPVcut - Epsilon)
+      if (o2::aod::resomicrodaughter::ResoMicroTrackSelFlag::decodeDCAz(track.trackSelectionFlags()) > cMaxDCAzToPVcut - Epsilon)
         return false;
       if (cfgPrimaryTrack && !track.isPrimaryTrack())
         return false;
@@ -268,11 +274,11 @@ struct DoubleResonanceScan {
     } else {
       switch (particleType) {
         case 0: // pion
-          return o2::aod::resodmciroaughter::PidNSigma::getTPCnSigma(candidate.pidNSigmaPiFlag());
+          return o2::aod::resomicrodaughter::PidNSigma::getTPCnSigma(candidate.pidNSigmaPiFlag());
         case 1: // kaon
-          return o2::aod::resodmciroaughter::PidNSigma::getTPCnSigma(candidate.pidNSigmaKaFlag());
+          return o2::aod::resomicrodaughter::PidNSigma::getTPCnSigma(candidate.pidNSigmaKaFlag());
         case 2: // proton
-          return o2::aod::resodmciroaughter::PidNSigma::getTPCnSigma(candidate.pidNSigmaPrFlag());
+          return o2::aod::resomicrodaughter::PidNSigma::getTPCnSigma(candidate.pidNSigmaPrFlag());
         default:
           return -999;
       }
@@ -297,11 +303,11 @@ struct DoubleResonanceScan {
     } else {
       switch (particleType) {
         case 0: // pion
-          return candidate.hasTOF() ? o2::aod::resodmciroaughter::PidNSigma::getTOFnSigma(candidate.pidNSigmaPiFlag()) : -999;
+          return candidate.hasTOF() ? o2::aod::resomicrodaughter::PidNSigma::getTOFnSigma(candidate.pidNSigmaPiFlag()) : -999;
         case 1: // kaon
-          return candidate.hasTOF() ? o2::aod::resodmciroaughter::PidNSigma::getTOFnSigma(candidate.pidNSigmaKaFlag()) : -999;
+          return candidate.hasTOF() ? o2::aod::resomicrodaughter::PidNSigma::getTOFnSigma(candidate.pidNSigmaKaFlag()) : -999;
         case 2: // proton
-          return candidate.hasTOF() ? o2::aod::resodmciroaughter::PidNSigma::getTOFnSigma(candidate.pidNSigmaPrFlag()) : -999;
+          return candidate.hasTOF() ? o2::aod::resomicrodaughter::PidNSigma::getTOFnSigma(candidate.pidNSigmaPrFlag()) : -999;
         default:
           return -999;
       }
@@ -338,8 +344,8 @@ struct DoubleResonanceScan {
           dcaXY = track.dcaXY();
           dcaZ = track.dcaZ();
         } else {
-          dcaXY = o2::aod::resodmciroaughter::ResoMicroTrackSelFlag::decodeDCAxy(track.trackSelectionFlags());
-          dcaZ = o2::aod::resodmciroaughter::ResoMicroTrackSelFlag::decodeDCAz(track.trackSelectionFlags());
+          dcaXY = o2::aod::resomicrodaughter::ResoMicroTrackSelFlag::decodeDCAxy(track.trackSelectionFlags());
+          dcaZ = o2::aod::resomicrodaughter::ResoMicroTrackSelFlag::decodeDCAz(track.trackSelectionFlags());
         }
         // FIXME: Apply better method
         switch (daughterIndex) {

@@ -16,13 +16,17 @@
 #ifndef COMMON_CORE_TRACKSELECTION_H_
 #define COMMON_CORE_TRACKSELECTION_H_
 
+#include <Framework/DataTypes.h>
+
+#include <Rtypes.h>
+
+#include <cmath>
+#include <cstdint>
+#include <functional>
 #include <set>
-#include <vector>
-#include <utility>
 #include <string>
-#include "Framework/Logger.h"
-#include "Framework/DataTypes.h"
-#include "Rtypes.h"
+#include <utility>
+#include <vector>
 
 class TrackSelection
 {
@@ -66,56 +70,66 @@ class TrackSelection
 
   static const std::string mCutNames[static_cast<int>(TrackCuts::kNCuts)];
 
+  // True for Run 2 track types. Hoisted out of the per-cut IsSelected() so that
+  // the trackType() column is dereferenced once per track instead of once per cut.
+  template <typename T>
+  static bool IsRun2Track(T const& track)
+  {
+    const auto trackType = track.trackType();
+    return trackType == o2::aod::track::Run2Track || trackType == o2::aod::track::Run2Tracklet;
+  }
+
   // Temporary function to check if track passes selection criteria. To be replaced by framework filters.
   template <typename T>
   bool IsSelected(T const& track) const
   {
-    if (!IsSelected(track, TrackCuts::kTrackType)) {
+    const bool isRun2 = IsRun2Track(track);
+    if (!IsSelected(track, TrackCuts::kTrackType, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kPtRange)) {
+    if (!IsSelected(track, TrackCuts::kPtRange, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kEtaRange)) {
+    if (!IsSelected(track, TrackCuts::kEtaRange, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kTPCNCls)) {
+    if (!IsSelected(track, TrackCuts::kTPCNCls, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kTPCCrossedRows)) {
+    if (!IsSelected(track, TrackCuts::kTPCCrossedRows, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kTPCCrossedRowsOverNCls)) {
+    if (!IsSelected(track, TrackCuts::kTPCCrossedRowsOverNCls, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kTPCChi2NDF)) {
+    if (!IsSelected(track, TrackCuts::kTPCChi2NDF, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kTPCRefit)) {
+    if (!IsSelected(track, TrackCuts::kTPCRefit, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kITSNCls)) {
+    if (!IsSelected(track, TrackCuts::kITSNCls, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kITSChi2NDF)) {
+    if (!IsSelected(track, TrackCuts::kITSChi2NDF, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kITSRefit)) {
+    if (!IsSelected(track, TrackCuts::kITSRefit, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kITSHits)) {
+    if (!IsSelected(track, TrackCuts::kITSHits, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kGoldenChi2)) {
+    if (!IsSelected(track, TrackCuts::kGoldenChi2, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kDCAxy)) {
+    if (!IsSelected(track, TrackCuts::kDCAxy, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kDCAz)) {
+    if (!IsSelected(track, TrackCuts::kDCAz, isRun2)) {
       return false;
     }
-    if (!IsSelected(track, TrackCuts::kTPCFracSharedCls)) {
+    if (!IsSelected(track, TrackCuts::kTPCFracSharedCls, isRun2)) {
       return false;
     }
     return true;
@@ -127,8 +141,9 @@ class TrackSelection
   {
     uint16_t flag = 0;
 
+    const bool isRun2 = IsRun2Track(track);
     auto setFlag = [&](const TrackCuts& cut) {
-      if (IsSelected(track, cut)) {
+      if (IsSelected(track, cut, isRun2)) {
         flag |= 1UL << static_cast<int>(cut);
       }
     };
@@ -157,8 +172,14 @@ class TrackSelection
   template <typename T>
   bool IsSelected(T const& track, const TrackCuts& cut) const
   {
-    const bool isRun2 = track.trackType() == o2::aod::track::Run2Track || track.trackType() == o2::aod::track::Run2Tracklet;
+    return IsSelected(track, cut, IsRun2Track(track));
+  }
 
+  // Overload taking the pre-computed Run 2 flag, so that callers evaluating several
+  // cuts on the same track do not re-read trackType() for each of them.
+  template <typename T>
+  bool IsSelected(T const& track, const TrackCuts& cut, bool isRun2) const
+  {
     switch (cut) {
       case TrackCuts::kTrackType:
         return track.trackType() == mTrackType;
@@ -228,8 +249,8 @@ class TrackSelection
   void SetMaxDcaXY(float maxDcaXY);
   void SetMaxDcaZ(float maxDcaZ);
   void SetMaxDcaXYPtDep(std::function<float(float)> ptDepCut);
-  void SetRequireHitsInITSLayers(int8_t minNRequiredHits, std::set<uint8_t> requiredLayers);
-  void SetRequireNoHitsInITSLayers(std::set<uint8_t> excludedLayers);
+  void SetRequireHitsInITSLayers(int8_t minNRequiredHits, const std::set<uint8_t>& requiredLayers);
+  void SetRequireNoHitsInITSLayers(const std::set<uint8_t>& excludedLayers);
   /// @brief Reset ITS requirements
   void ResetITSRequirements() { mRequiredITSHits.clear(); }
   void SetMaxTPCFractionSharedCls(float maxTPCFractionSharedCls);
@@ -264,10 +285,10 @@ class TrackSelection
   bool mRequireTPCRefit{false};   // require refit in TPC
   bool mRequireGoldenChi2{false}; // require golden chi2 cut (Run 2 only)
 
-  // vector of ITS requirements (minNRequiredHits in specific requiredLayers)
-  std::vector<std::pair<int8_t, std::set<uint8_t>>> mRequiredITSHits{};
+  // vector of ITS requirements (minNRequiredHits, bitmask of requiredLayers)
+  std::vector<std::pair<int8_t, uint8_t>> mRequiredITSHits{};
 
-  ClassDefNV(TrackSelection, 1);
+  ClassDefNV(TrackSelection, 2);
 };
 
 #endif // COMMON_CORE_TRACKSELECTION_H_

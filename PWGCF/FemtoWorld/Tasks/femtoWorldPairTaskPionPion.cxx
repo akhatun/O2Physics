@@ -15,20 +15,34 @@
 /// \author Zuzanna Chochulska, WUT Warsaw, zchochul@cern.ch
 /// \author Alicja Plachta, WUT Warsaw
 
-#include "Framework/AnalysisTask.h"
-#include "Framework/runDataProcessing.h"
-#include "Framework/HistogramRegistry.h"
-#include "Framework/ASoAHelpers.h"
-#include "Framework/RunningWorkflowInfo.h"
-#include "Framework/StepTHn.h"
-
-#include "PWGCF/FemtoWorld/DataModel/FemtoWorldDerived.h"
-#include "PWGCF/FemtoWorld/Core/FemtoWorldParticleHisto.h"
+#include "PWGCF/FemtoWorld/Core/FemtoWorldDetaDphiStar.h"
 #include "PWGCF/FemtoWorld/Core/FemtoWorldEventHisto.h"
 #include "PWGCF/FemtoWorld/Core/FemtoWorldPairCleaner.h"
+#include "PWGCF/FemtoWorld/Core/FemtoWorldParticleHisto.h"
 #include "PWGCF/FemtoWorld/Core/FemtoWorldPionContainer.h"
-#include "PWGCF/FemtoWorld/Core/FemtoWorldDetaDphiStar.h"
-#include "PWGCF/FemtoWorld/Core/FemtoWorldUtils.h"
+#include "PWGCF/FemtoWorld/DataModel/FemtoWorldDerived.h"
+
+#include "Common/DataModel/TrackSelectionTables.h"
+
+#include <Framework/ASoA.h>
+#include <Framework/ASoAHelpers.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisHelpers.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/BinningPolicy.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/SliceCache.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TMath.h>
+#include <TMathBase.h>
+
+#include <cstdint>
+#include <vector>
 
 using namespace o2;
 using namespace o2::analysis::femtoWorld;
@@ -255,7 +269,7 @@ struct femtoWorldPairTaskPionPion {
 
   // Function to build combinations
   template <typename T1, typename T2, typename T3, typename T4>
-  void CombineParticles(T1 groupPartsOne, T1 groupPartsTwo, T2 cont, T3 parts, T4 magFieldTesla, int multCol, int sameOrMixed)
+  void CombineParticles(const T1& groupPartsOne, const T1& groupPartsTwo, T2 cont, const T3& parts, T4 magFieldTesla, int multCol, int sameOrMixed)
   {
     if (sameOrMixed == 1) {
       for (auto& [p1, p2] : combinations(groupPartsOne, groupPartsTwo)) {

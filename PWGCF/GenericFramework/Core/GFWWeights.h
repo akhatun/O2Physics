@@ -16,16 +16,15 @@
 #ifndef PWGCF_GENERICFRAMEWORK_CORE_GFWWEIGHTS_H_
 #define PWGCF_GENERICFRAMEWORK_CORE_GFWWEIGHTS_H_
 
-#include "Framework/Logger.h"
+#include <TCollection.h>
+#include <TH1.h>
+#include <TH3.h>
+#include <TNamed.h>
+#include <TObjArray.h>
+#include <TString.h>
 
-#include "TObjArray.h"
-#include "TNamed.h"
-#include "TH3D.h"
-#include "TH2D.h"
-#include "TH1D.h"
-#include "TFile.h"
-#include "TCollection.h"
-#include "TString.h"
+#include <Rtypes.h>
+#include <RtypesCore.h>
 
 class GFWWeights : public TNamed
 {
@@ -52,7 +51,7 @@ class GFWWeights : public TNamed
   double getIntegratedEfficiency(double pt);
   void setDataFilled(bool newval) { fDataFilled = newval; }
   void setMCFilled(bool newval) { fMCFilled = newval; }
-  void readAndMerge(TString filelinks, TString listName = "OutputList", bool addData = kTRUE, bool addRec = kTRUE, bool addGen = kTRUE);
+  void readAndMerge(const TString& filelinks, const TString& listName = "OutputList", bool addData = kTRUE, bool addRec = kTRUE, bool addGen = kTRUE);
   void setPtBins(int Nbins, double* bins);
   Long64_t Merge(TCollection* collist);
   void rebinNUA(int nX = 1, int nY = 2, int nZ = 5);

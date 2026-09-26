@@ -13,23 +13,40 @@
 /// \brief multiparticle-correlations-ar - Task belonging to Anton Riedel for computing multiparticle correlations
 /// \author Anton Riedel, TU München, anton.riedel@tum.de
 
-#include <TMath.h>
-#include "fairlogger/Logger.h"
-#include <algorithm>
-#include <cstdint>
-#include <iostream>
-#include <string_view>
-#include <string>
-#include <vector>
-#include <array>
-#include <numeric>
-#include "TComplex.h"
-#include "Framework/runDataProcessing.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/Expressions.h"
 #include "Common/DataModel/Centrality.h"
 #include "Common/DataModel/Multiplicity.h"
 #include "Common/DataModel/TrackSelectionTables.h"
+
+#include <Framework/ASoA.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisHelpers.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Array2D.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/Logger.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TComplex.h>
+#include <TH1.h>
+#include <TList.h>
+#include <TMath.h>
+#include <TProfile.h>
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <map>
+#include <numeric>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 using namespace o2;
 using namespace o2::framework;
@@ -199,7 +216,7 @@ inline float abs(float vx, float vy, float vz)
 }
 
 // generice function for checking if the value of a variable passes a cut
-inline bool SurviveCut(LabeledArray<float> ConfigValue, float Value)
+inline bool SurviveCut(const LabeledArray<float>& ConfigValue, float Value)
 {
   uint32_t row = 0;
   bool flag = true;
@@ -599,7 +616,7 @@ struct MultiParticleCorrelationsARTask {
     for (auto SC : cfgSC.value) {
       Correlators = MapSCToCor(SC);
       fMapScToCor.insert({SC, Correlators});
-      for (auto cor : Correlators) {
+      for (const auto& cor : Correlators) {
         if (std::find(fCorrelators.begin(), fCorrelators.end(), cor) !=
             fCorrelators.end()) {
           continue;
@@ -732,7 +749,7 @@ struct MultiParticleCorrelationsARTask {
 
   // function for checking if collision survives event cuts
   template <typename CollisionObject, typename TrackObject>
-  bool SurviveEventCuts(CollisionObject collision, TrackObject tracks)
+  bool SurviveEventCuts(const CollisionObject& collision, const TrackObject& tracks)
   {
 
     // Check if event survives event cuts, where we can get the values for the variables immediately
@@ -763,7 +780,7 @@ struct MultiParticleCorrelationsARTask {
 
   // function for checking if track survices trach cuts
   template <typename TrackObject>
-  bool SurviveTrackCuts(TrackObject track)
+  bool SurviveTrackCuts(const TrackObject& track)
   {
     // if all SurviveCut return true, the function will return true
     // if at least one fails, it will return false
@@ -780,7 +797,7 @@ struct MultiParticleCorrelationsARTask {
   }
 
   template <typename TrackObject>
-  void FillAzimuthalAngle(TrackObject track)
+  void FillAzimuthalAngle(const TrackObject& track)
   {
     double angle = track.phi();
     double weight = GetWeight<TrackObject>(track);
@@ -800,7 +817,7 @@ struct MultiParticleCorrelationsARTask {
   };
 
   template <typename TrackObject>
-  double GetWeight(TrackObject /*track*/)
+  double GetWeight(const TrackObject& /*track*/)
   {
     // for efficiency corrections, tbi
     return 1.;

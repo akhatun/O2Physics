@@ -8,29 +8,45 @@
 // In applying this license CERN does not waive the privileges and immunities
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
-#include <map>
-#include <string>
-#include <unordered_set>
-#include <unordered_map>
-#include <vector>
 
-#include "CCDB/BasicCCDBManager.h"
 #include "Common/DataModel/MatchMFTFT0.h"
 #include "Common/DataModel/MatchMFTMuonData.h"
-#include "DataFormatsGlobalTracking/RecoContainer.h"
-#include "Common/DataModel/CollisionAssociationTables.h"
-#include "DataFormatsParameters/GRPMagField.h"
-#include "Field/MagneticField.h"
-#include "TGeoGlobalMagField.h"
-#include "DetectorsBase/Propagator.h"
-#include "DetectorsBase/GeometryManager.h"
-#include "MCHTracking/TrackExtrap.h"
-#include "GlobalTracking/MatchGlobalFwd.h"
-#include "Math/SMatrix.h"
-#include "Math/SVector.h"
-#include "TLorentzVector.h"
-#include "TVector2.h"
-#include "TDatabasePDG.h"
+
+#include <CCDB/BasicCCDBManager.h>
+#include <CCDB/CcdbApi.h>
+#include <DataFormatsGlobalTracking/RecoContainer.h>
+#include <DataFormatsParameters/GRPMagField.h>
+#include <DetectorsBase/GeometryManager.h>
+#include <DetectorsBase/Propagator.h>
+#include <Field/MagneticField.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisHelpers.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/DataTypes.h>
+#include <Framework/InitContext.h>
+#include <Framework/runDataProcessing.h>
+#include <GlobalTracking/MatchGlobalFwd.h>
+#include <MCHTracking/TrackExtrap.h>
+#include <ReconstructionDataFormats/TrackFwd.h>
+
+#include <Math/MatrixRepresentationsStatic.h>
+#include <Math/SMatrix.h>
+#include <Math/SVector.h>
+#include <TDatabasePDG.h>
+#include <TGeoGlobalMagField.h>
+#include <TLorentzVector.h>
+#include <TVector2.h>
+
+#include <RtypesCore.h>
+
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <map>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 using namespace std;
 
@@ -39,12 +55,6 @@ using namespace o2::soa;
 using namespace o2::aod;
 using namespace o2::framework;
 using namespace o2::framework::expressions;
-
-#include "Framework/AnalysisTask.h"
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/ASoAHelpers.h"
-#include "Framework/DataTypes.h"
-#include "Framework/runDataProcessing.h"
 
 using MyCollisions = aod::Collisions;
 using MyBCs = soa::Join<aod::BCs, aod::Timestamps, aod::MatchedToFT0>;
@@ -493,7 +503,7 @@ struct match_mft_mch_data_mc {
   };
 
   template <typename MUON>
-  bool isGoodMuonQuality(MUON muontrack)
+  bool isGoodMuonQuality(const MUON& muontrack)
   {
     if (!muontrack.has_collision())
       return false;
@@ -511,7 +521,7 @@ struct match_mft_mch_data_mc {
   }
 
   template <typename MUON>
-  bool isGoodMuonKine(MUON muontrack)
+  bool isGoodMuonKine(const MUON& muontrack)
   {
     if (fEtaMchLow > muontrack.getEta() || muontrack.getEta() > fEtaMchUp)
       return false;
@@ -519,7 +529,7 @@ struct match_mft_mch_data_mc {
   }
 
   template <typename MFT>
-  bool isGoodMFTQuality(MFT mfttrack)
+  bool isGoodMFTQuality(const MFT& mfttrack)
   {
     if (!mfttrack.has_collision())
       return false;
@@ -531,7 +541,7 @@ struct match_mft_mch_data_mc {
   }
 
   template <typename MFT>
-  bool isGoodMFTKine(MFT mfttrack)
+  bool isGoodMFTKine(const MFT& mfttrack)
   {
     if (fEtaMftLow > mfttrack.getEta() || mfttrack.getEta() > fEtaMftUp)
       return false;
@@ -546,7 +556,7 @@ struct match_mft_mch_data_mc {
   template <typename MUONs, typename Collisions>
   void setMUONs(MUONs const& muontracks, Collisions const& collisions)
   {
-    for (auto muontrack : muontracks) {
+    for (const auto& muontrack : muontracks) {
       if (!isGoodMuonQuality(muontrack))
         continue;
       o2::dataformats::GlobalFwdTrack muontrack_at_pv = propagateMUONtoPV(muontrack, collisions);
@@ -585,7 +595,7 @@ struct match_mft_mch_data_mc {
   template <typename MFTs, typename Collisions>
   void setMFTs(MFTs const& mfttracks, Collisions const& collisions, o2::field::MagneticField* field)
   {
-    for (auto mfttrack : mfttracks) {
+    for (const auto& mfttrack : mfttracks) {
       if (!isGoodMFTQuality(mfttrack))
         continue;
 
@@ -624,7 +634,7 @@ struct match_mft_mch_data_mc {
       return;
 
     mRunNumber = bc.runNumber();
-    std::map<string, string> metadata;
+    std::map<std::string, std::string> metadata;
     auto soreor = o2::ccdb::BasicCCDBManager::getRunDuration(ccdbApi, mRunNumber);
     auto ts = soreor.first;
     auto grpmag = ccdbApi.retrieveFromTFileAny<o2::parameters::GRPMagField>(grpmagPath, metadata, ts);

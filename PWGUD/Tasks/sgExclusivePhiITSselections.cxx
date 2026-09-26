@@ -9,18 +9,29 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 //
-#include <vector>
-#include "Framework/runDataProcessing.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/AnalysisDataModel.h"
-#include <iostream>
-#include "PWGUD/DataModel/UDTables.h"
-#include <TString.h>
-#include "TLorentzVector.h"
-#include "Common/DataModel/PIDResponse.h"
 #include "PWGUD/Core/SGSelector.h"
+#include "PWGUD/DataModel/UDTables.h"
 
-using std::array;
+#include <CommonConstants/PhysicsConstants.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TH1.h>
+#include <TLorentzVector.h>
+#include <TMath.h>
+#include <TString.h>
+
+#include <cmath>
+#include <cstddef>
+#include <cstdlib>
+#include <vector>
+
 using namespace std;
 using namespace o2;
 using namespace o2::aod;
@@ -157,7 +168,7 @@ struct sgExclusivePhiITSselections {
       std::vector<TLorentzVector> allTracksAreKaons;
       std::vector<TLorentzVector> allTracksAreKaonsBandPID;
       std::vector<TLorentzVector> allTracksAreITSonlyAndFourITSclusters;
-      for (auto t : tracks) {
+      for (const auto& t : tracks) {
         registry.fill(HIST("hSelectionCounter2"), 0);
         if (!t.isPVContributor()) {
           continue;
@@ -256,7 +267,7 @@ struct sgExclusivePhiITSselections {
       // in the case that there are ONLY 2 PV
       if (allTracksAreKaons.size() == 2) {
         registry.fill(HIST("hSelectionCounter2"), 7);
-        for (auto kaon : allTracksAreKaons) {
+        for (const auto& kaon : allTracksAreKaons) {
           phiWithoutPID += kaon;
         }
         registry.fill(HIST("hTracksKaons"), allTracksAreKaons.size());
@@ -298,12 +309,12 @@ struct sgExclusivePhiITSselections {
             }
           }
         } // Mass cut
-      }   // end of two tracks only loop
+      } // end of two tracks only loop
 
       if (allTracksAreKaonsBandPID.size() == 2) {
         registry.fill(HIST("hTracksKaons"), allTracksAreKaonsBandPID.size() + 10);
         TLorentzVector reallyPhi;
-        for (auto kaon : allTracksAreKaonsBandPID) {
+        for (const auto& kaon : allTracksAreKaonsBandPID) {
           reallyPhi += kaon;
         }
         registry.fill(HIST("KaonBandPHI/hPtPhiIdentifiedKaons"), reallyPhi.Pt());
@@ -357,7 +368,7 @@ struct sgExclusivePhiITSselections {
       } // Kaon Band
 
     } // double gap
-  }   // end of process
+  } // end of process
 
   void processSG(UDCollisionsFull::iterator const& collision, udtracksfull const& tracks)
   // process function subscribing to SG data

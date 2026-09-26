@@ -8,23 +8,27 @@
 // In applying this license CERN does not waive the privileges and immunities
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
-#ifndef SKIMMING_CONFIGURABLE_CUTS_CLASSES_H
-#define SKIMMING_CONFIGURABLE_CUTS_CLASSES_H
+
+#ifndef PWGCF_TWOPARTICLECORRELATIONS_CORE_SKIMMINGCONFIGURABLECUTS_H_
+#define PWGCF_TWOPARTICLECORRELATIONS_CORE_SKIMMINGCONFIGURABLECUTS_H_
+
+#include <Framework/DataTypes.h>
+#include <Framework/Logger.h>
+
+#include <TF1.h>
+#include <TList.h>
+#include <TNamed.h>
+#include <TObject.h>
+#include <TString.h>
 
 #include <Rtypes.h>
-#include <TString.h>
-#include <TObject.h>
-#include <TNamed.h>
-#include <TMath.h>
-#include <TList.h>
-#include <TF1.h>
-#include <set>
-#include <vector>
-#include <regex>
-#include <TObjArray.h>
 
-#include <fairlogger/Logger.h>
-#include "Framework/DataTypes.h"
+#include <cstdint>
+#include <functional>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace o2
 {
@@ -568,9 +572,9 @@ class TrackSelectionBrick : public SpecialCutBrick
   void SetMaxDcaXY(float maxDcaXY) { mMaxDcaXY = maxDcaXY; }
   void SetMaxDcaZ(float maxDcaZ) { mMaxDcaZ = maxDcaZ; }
 
-  void SetMaxDcaXYPtDep(std::function<float(float)> ptDepCut) { mMaxDcaXYPtDep = ptDepCut; }
-  void SetRequireHitsInITSLayers(int8_t minNRequiredHits, std::set<uint8_t> requiredLayers) { mRequiredITSHits.push_back(std::make_pair(minNRequiredHits, requiredLayers)); }
-  void SetRequireNoHitsInITSLayers(std::set<uint8_t> excludedLayers) { mRequiredITSHits.push_back(std::make_pair(-1, excludedLayers)); }
+  void SetMaxDcaXYPtDep(std::function<float(float)> ptDepCut) { mMaxDcaXYPtDep = std::move(ptDepCut); }
+  void SetRequireHitsInITSLayers(int8_t minNRequiredHits, const std::set<uint8_t>& requiredLayers) { mRequiredITSHits.push_back(std::make_pair(minNRequiredHits, requiredLayers)); }
+  void SetRequireNoHitsInITSLayers(const std::set<uint8_t>& excludedLayers) { mRequiredITSHits.push_back(std::make_pair(-1, excludedLayers)); }
   void ResetITSRequirements() { mRequiredITSHits.clear(); }
 
   void DisableNClustersTPCCheck(bool disable = true) { mCheckNClustersTPC = not disable; }
@@ -629,4 +633,4 @@ class TrackSelectionBrick : public SpecialCutBrick
 } // namespace analysis
 } // namespace o2
 
-#endif // SKIMMING_CONFIGURABLE_CUTS_CLASSES_H
+#endif // PWGCF_TWOPARTICLECORRELATIONS_CORE_SKIMMINGCONFIGURABLECUTS_H_

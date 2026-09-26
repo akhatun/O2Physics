@@ -13,26 +13,31 @@
 // \author Sasha Bylinkin, alexander.bylinkin@gmail.com
 // \since  April 2023
 
-#include "Framework/runDataProcessing.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/O2DatabasePDGPlugin.h"
-#include <iostream>
-#include "PWGUD/DataModel/UDTables.h"
 #include "PWGUD/Core/SGSelector.h"
 #include "PWGUD/Core/SGTrackSelector.h"
-#include "Common/DataModel/PIDResponse.h"
-#include "Framework/ASoA.h"
-#include "Framework/DataTypes.h"
-#include "MathUtils/Utils.h"
-#include "Common/DataModel/TrackSelectionTables.h"
-#include <TString.h>
-#include "TLorentzVector.h"
+#include "PWGUD/DataModel/UDTables.h"
+
+#include <Framework/ASoA.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisHelpers.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/O2DatabasePDGPlugin.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TLorentzVector.h>
+#include <TMathBase.h>
+
+#include <vector>
+
 using namespace std;
 using namespace o2;
 using namespace o2::aod;
 using namespace o2::framework;
 using namespace o2::framework::expressions;
+
 struct SGFourPiAnalyzer {
   SGSelector sgSelector;
   Service<o2::framework::O2DatabasePDG> pdg;
@@ -109,7 +114,7 @@ struct SGFourPiAnalyzer {
     gapSide = truegapSide;
     std::vector<TLorentzVector> goodTracks;
     float sign = 0;
-    for (auto t : tracks) {
+    for (const auto& t : tracks) {
       int itsNCls = t.itsNCls();
       // if (itsNCls) {
       registry.fill(HIST("ITSNCls"), itsNCls);
@@ -123,7 +128,7 @@ struct SGFourPiAnalyzer {
     }
     //    std::cout << goodTracks.size()<<std::endl;
     if (goodTracks.size() == 4) {
-      for (auto pion : goodTracks) {
+      for (const auto& pion : goodTracks) {
         v01 += pion;
       }
       // Apply pion hypothesis and create pairs

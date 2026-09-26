@@ -16,36 +16,29 @@
 /// \since  09.04.2025
 //
 
-// C++ headers
+#include "PWGUD/Core/SGSelector.h"
+#include "PWGUD/Core/UPCTauCentralBarrelHelperRL.h"
+#include "PWGUD/DataModel/TauEventTables.h"
+#include "PWGUD/DataModel/UDTables.h"
+
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisHelpers.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/O2DatabasePDGPlugin.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TH1.h>
+
+#include <algorithm>
+#include <cstdint>
 #include <set>
 #include <utility>
-#include <algorithm>
 #include <vector>
-#include <random>
-
-// O2 headers
-#include "Framework/AnalysisTask.h"
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/HistogramRegistry.h"
-#include "Framework/O2DatabasePDGPlugin.h"
-#include "Framework/runDataProcessing.h"
-
-// O2Physics headers
-#include "Common/CCDB/EventSelectionParams.h"
-#include "Common/Core/TrackSelection.h"
-#include "Common/Core/TrackSelectionDefaults.h"
-#include "Common/Core/trackUtilities.h"
-#include "Common/DataModel/EventSelection.h"
-#include "Common/DataModel/PIDResponse.h"
-#include "Common/DataModel/TrackSelectionTables.h"
-#include "PWGUD/Core/UPCTauCentralBarrelHelperRL.h"
-#include "PWGUD/DataModel/UDTables.h"
-#include "PWGUD/DataModel/TauEventTables.h"
-#include "PWGUD/Core/SGSelector.h"
-
-// ROOT headers
-#include "TLorentzVector.h"
-#include "TPDGCode.h"
 
 using namespace o2;
 using namespace o2::framework;
@@ -56,7 +49,7 @@ struct TauEventTableProducer {
   Produces<o2::aod::TauTwoTracks> tauTwoTracks;
   Produces<o2::aod::TrueTauTwoTracks> trueTauTwoTracks;
 
-  // Global varialbes
+  // Global variables
   Service<o2::framework::O2DatabasePDG> pdg;
   SGSelector sgSelector;
 
@@ -72,11 +65,17 @@ struct TauEventTableProducer {
     Configurable<bool> useNumContribs{"useNumContribs", false, {"Use coll.numContribs as event cut"}};
     Configurable<int> cutRecoFlag{"cutRecoFlag", 1, {"0 = std mode, 1 = upc mode"}};
     Configurable<bool> useRecoFlag{"useRecoFlag", false, {"Use coll.flags as event cut"}};
+    Configurable<int> cutRCTflag{"cutRCTflag", 0, {"0 = off, 1 = CBT, 2 = CBT+ZDC, 3 = CBThadron, 4 = CBThadron+ZDC"}};
     Configurable<float> cutTrueGapSideFV0{"cutTrueGapSideFV0", 180000, "FV0A threshold for SG selector"};
     Configurable<float> cutTrueGapSideFT0A{"cutTrueGapSideFT0A", 150., "FT0A threshold for SG selector"};
     Configurable<float> cutTrueGapSideFT0C{"cutTrueGapSideFT0C", 50., "FT0C threshold for SG selector"};
     Configurable<float> cutTrueGapSideZDC{"cutTrueGapSideZDC", 10000., "ZDC threshold for SG selector. 0 is <1n, 4.2 is <2n, 6.7 is <3n, 9.5 is <4n, 12.5 is <5n"};
     Configurable<float> cutFITtime{"cutFITtime", 40., "Maximum FIT time allowed. Default is 40ns"};
+    Configurable<bool> cutEvTFb{"cutEvTFb", true, {"Event selection bit kNoTimeFrameBorder"}};
+    Configurable<bool> cutEvITSROFb{"cutEvITSROFb", true, {"Event selection bit kNoITSROFrameBorder"}};
+    Configurable<bool> cutEvSbp{"cutEvSbp", true, {"Event selection bit kNoSameBunchPileup"}};
+    Configurable<bool> cutEvZvtxFT0vPV{"cutEvZvtxFT0vPV", false, {"Event selection bit kIsGoodZvtxFT0vsPV"}};
+    Configurable<bool> cutEvVtxITSTPC{"cutEvVtxITSTPC", true, {"Event selection bit kIsVertexITSTPC"}};
     Configurable<float> cutEvOccupancy{"cutEvOccupancy", 100000., "Maximum allowed occupancy"};
     Configurable<bool> cutEvTrs{"cutEvTrs", false, {"Event selection bit kNoCollInTimeRangeStandard"}};
     Configurable<bool> cutEvTrofs{"cutEvTrofs", false, {"Event selection bit kNoCollInRofStandard"}};
@@ -153,8 +152,45 @@ struct TauEventTableProducer {
   }
 
   template <typename C>
+  bool isGoodRCTflag(C const& coll)
+  {
+    switch (cutSample.cutRCTflag) {
+      case 1:
+        return sgSelector.isCBTOk(coll);
+      case 2:
+        return sgSelector.isCBTZdcOk(coll);
+      case 3:
+        return sgSelector.isCBTHadronOk(coll);
+      case 4:
+        return sgSelector.isCBTHadronZdcOk(coll);
+      default:
+        return true;
+    }
+  }
+
+  template <typename C>
   bool isGoodROFtime(C const& coll)
   {
+
+    // kNoTimeFrameBorder
+    if (cutSample.cutEvTFb && !coll.tfb())
+      return false;
+
+    // kNoITSROFrameBorder
+    if (cutSample.cutEvITSROFb && !coll.itsROFb())
+      return false;
+
+    // kNoSameBunchPileup
+    if (cutSample.cutEvSbp && !coll.sbp())
+      return false;
+
+    // kIsGoodZvtxFT0vsPV
+    if (cutSample.cutEvZvtxFT0vPV && !coll.zVtxFT0vPV())
+      return false;
+
+    // kIsVertexITSTPC
+    if (cutSample.cutEvVtxITSTPC && !coll.vtxITSTPC())
+      return false;
 
     // Occupancy
     if (coll.occupancyInTime() > cutSample.cutEvOccupancy)
@@ -177,7 +213,7 @@ struct TauEventTableProducer {
 
   std::vector<std::pair<int8_t, std::set<uint8_t>>> cutMyRequiredITSHits{};
 
-  void mySetRequireHitsInITSLayers(int8_t minNRequiredHits, std::set<uint8_t> requiredLayers)
+  void mySetRequireHitsInITSLayers(int8_t minNRequiredHits, const std::set<uint8_t>& requiredLayers)
   {
     // layer 0 corresponds to the the innermost ITS layer
     cutMyRequiredITSHits.push_back(std::make_pair(minNRequiredHits, requiredLayers));
@@ -262,7 +298,7 @@ struct TauEventTableProducer {
       return false; // TPC chi2
     if (cutGlobalTrack.cutGoodITSTPCmatching) {
       if (track.itsChi2NCl() < 0.)
-        return false; // TPC chi2
+        return false; // good ITS-TPC matching means ITS ch2 is not negative
     }
     //  TOF
     if (track.hasTOF()) {
@@ -303,15 +339,16 @@ struct TauEventTableProducer {
                      FullUDTracks const& tracks)
   {
 
-    int gapSide = collision.gapSide();
-    int trueGapSide = sgSelector.trueGap(collision, cutSample.cutTrueGapSideFV0, cutSample.cutTrueGapSideFT0A, cutSample.cutTrueGapSideFT0C, cutSample.cutTrueGapSideZDC);
-
-    if (cutSample.useTrueGap)
-      gapSide = trueGapSide;
+    if (!isGoodRCTflag(collision))
+      return;
 
     if (!isGoodROFtime(collision))
       return;
 
+    int gapSide = collision.gapSide();
+    int trueGapSide = sgSelector.trueGap(collision, cutSample.cutTrueGapSideFV0, cutSample.cutTrueGapSideFT0A, cutSample.cutTrueGapSideFT0C, cutSample.cutTrueGapSideZDC);
+    if (cutSample.useTrueGap)
+      gapSide = trueGapSide;
     if (gapSide != cutSample.whichGapSide)
       return;
 

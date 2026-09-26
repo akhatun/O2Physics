@@ -16,13 +16,11 @@
 #ifndef PWGCF_FEMTOUNIVERSE_CORE_FEMTOUNIVERSESPHERHARMATH_H_
 #define PWGCF_FEMTOUNIVERSE_CORE_FEMTOUNIVERSESPHERHARMATH_H_
 
-#include <vector>
-#include <algorithm>
+#include <CommonConstants/MathConstants.h>
 
-#include "Math/Vector4D.h"
-#include "Math/Boost.h"
-#include "TLorentzVector.h"
-#include "TMath.h"
+#include <array>
+#include <cmath>
+#include <complex>
 
 namespace o2::analysis::femto_universe
 {

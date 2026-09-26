@@ -9,18 +9,32 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 //
-#include <vector>
-#include "Framework/runDataProcessing.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/AnalysisDataModel.h"
-#include <iostream>
-#include "PWGUD/DataModel/UDTables.h"
-#include <TString.h>
-#include "TLorentzVector.h"
-#include "Common/DataModel/PIDResponse.h"
 #include "PWGUD/Core/SGSelector.h"
+#include "PWGUD/DataModel/UDTables.h"
 
-using std::array;
+#include <CommonConstants/PhysicsConstants.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TH1.h>
+#include <TLorentzVector.h>
+#include <TMath.h>
+#include <TString.h>
+#include <TVector3.h>
+
+#include <RtypesCore.h>
+
+#include <cmath>
+#include <cstddef>
+#include <cstdlib>
+#include <vector>
+
 using namespace std;
 using namespace o2;
 using namespace o2::aod;
@@ -43,9 +57,9 @@ struct sgExclusivePhi {
   HistogramRegistry registry{"registry", {}, OutputObjHandlingPolicy::AnalysisObject};
 
   //_____________________________________________________________________________
-  Double_t CosThetaHelicityFrame(TLorentzVector pionPositive,
-                                 TLorentzVector pionNegative,
-                                 TLorentzVector possibleRhoZero)
+  Double_t CosThetaHelicityFrame(const TLorentzVector& pionPositive,
+                                 const TLorentzVector& pionNegative,
+                                 const TLorentzVector& possibleRhoZero)
   {
 
     Double_t HalfSqrtSnn = 2680.;
@@ -72,7 +86,7 @@ struct sgExclusivePhi {
     return CosThetaHE;
   }
   //------------------------------------------------------------------------------------------------------
-  Double_t PhiHelicityFrame(TLorentzVector muonPositive, TLorentzVector muonNegative, TLorentzVector possibleJPsi)
+  Double_t PhiHelicityFrame(const TLorentzVector& muonPositive, const TLorentzVector& muonNegative, const TLorentzVector& possibleJPsi)
   {
 
     // Half of the energy per pair of the colliding nucleons.
@@ -282,7 +296,7 @@ struct sgExclusivePhi {
       std::vector<float> onlyKaonSigma;
       std::vector<decltype(tracks.begin())> rawKaonTracks;
 
-      for (auto trk : tracks) {
+      for (const auto& trk : tracks) {
         registry.fill(HIST("hSelectionCounter"), 1);
         if (!trk.isPVContributor()) {
           continue;
@@ -343,7 +357,7 @@ struct sgExclusivePhi {
       if (onlyKaonTracks.size() == 2) {
         registry.fill(HIST("hSelectionCounter"), 7);
 
-        for (auto kaon : onlyKaonTracks) {
+        for (const auto& kaon : onlyKaonTracks) {
           phi += kaon;
         }
 
@@ -395,7 +409,7 @@ struct sgExclusivePhi {
       std::vector<int> booleanAvgClusterSizePerTrackITSonly;
 
       int counter = 0;
-      for (auto t : tracks) {
+      for (const auto& t : tracks) {
         registry.fill(HIST("hSelectionCounter2"), 0);
         if (!t.isPVContributor()) {
           continue;
@@ -507,16 +521,16 @@ struct sgExclusivePhi {
       if (fabs(collision.posZ()) < 10.) {
         if (allTracksAreKaons.size() == 2) {
           registry.fill(HIST("hSelectionCounter2"), 7);
-          for (auto kaon : allTracksAreKaons) {
+          for (const auto& kaon : allTracksAreKaons) {
             phiWithoutPID += kaon;
           }
           registry.fill(HIST("hTracksKaons"), allTracksAreKaons.size());
           // kaon mass hypothesis with wrong momentum for one track
-          for (auto kaon : allTracksAreKaonsWrongMomentum) {
+          for (const auto& kaon : allTracksAreKaonsWrongMomentum) {
             phiWrongMomentaWithoutPID += kaon;
           }
           // pion mass hypothesis
-          for (auto pion : allTracksArePions) {
+          for (const auto& pion : allTracksArePions) {
             phiWithoutPIDPionHypothesis += pion;
           }
 
@@ -655,12 +669,12 @@ struct sgExclusivePhi {
             }
           }
         } // end of two tracks only loop
-      }   // vertex cut
+      } // vertex cut
 
       if (allTracksAreKaonsBandPID.size() == 2) {
 
         TLorentzVector reallyPhi;
-        for (auto kaon : allTracksAreKaonsBandPID) {
+        for (const auto& kaon : allTracksAreKaonsBandPID) {
           reallyPhi += kaon;
         }
 
@@ -731,8 +745,8 @@ struct sgExclusivePhi {
           }
         }
       } // Kaon Band
-    }   // double gap
-  }     // end of process
+    } // double gap
+  } // end of process
 
 }; // end of struct
 

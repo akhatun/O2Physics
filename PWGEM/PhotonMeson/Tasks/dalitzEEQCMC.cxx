@@ -9,46 +9,67 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 //
-// ========================
-//
-// This code runs loop over dalitz ee table for dalitz QC.
-//    Please write to: daiki.sekihata@cern.ch
 
-#include <string>
-#include <vector>
+/// \file dalitzEEQC.cxx
+/// \brief This code runs loop over dalitz ee table for dalitz QC in MC
+/// \author Daiki Sekihata, daiki.sekihata@cern.ch
 
-#include "TString.h"
-#include "Math/Vector4D.h"
-#include "Framework/runDataProcessing.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/ASoAHelpers.h"
-
-#include "DetectorsBase/GeometryManager.h"
-#include "DataFormatsParameters/GRPObject.h"
-#include "DataFormatsParameters/GRPMagField.h"
-#include "CCDB/BasicCCDBManager.h"
-
-#include "Common/Core/RecoDecay.h"
-#include "PWGEM/PhotonMeson/DataModel/gammaTables.h"
+#include "PWGEM/Dilepton/Utils/MCUtilities.h"
+#include "PWGEM/Dilepton/Utils/PairUtilities.h"
 #include "PWGEM/PhotonMeson/Core/DalitzEECut.h"
 #include "PWGEM/PhotonMeson/Core/EMPhotonEventCut.h"
-#include "PWGEM/PhotonMeson/Utils/MCUtilities.h"
-#include "PWGEM/Dilepton/Utils/MCUtilities.h"
+#include "PWGEM/PhotonMeson/DataModel/EventTables.h"
+#include "PWGEM/PhotonMeson/DataModel/gammaTables.h"
 #include "PWGEM/PhotonMeson/Utils/EventHistograms.h"
-#include "PWGEM/Dilepton/Utils/PairUtilities.h"
+
+#include "Common/DataModel/Centrality.h"
+#include "Common/DataModel/PIDResponseTPC.h"
+#include "Common/DataModel/TrackSelectionTables.h"
+
+#include <CCDB/BasicCCDBManager.h>
+#include <CCDB/CcdbApi.h>
+#include <CommonConstants/MathConstants.h>
+#include <CommonConstants/PhysicsConstants.h>
+#include <DataFormatsParameters/GRPMagField.h>
+#include <DataFormatsParameters/GRPObject.h>
+#include <Framework/ASoA.h>
+#include <Framework/ASoAHelpers.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisHelpers.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Concepts.h>
+#include <Framework/Configurable.h>
+#include <Framework/Expressions.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/SliceCache.h>
+#include <Framework/runDataProcessing.h>
+
+#include <Math/Vector4D.h> // IWYU pragma: keep (do not replace with Math/Vector4Dfwd.h)
+#include <Math/Vector4Dfwd.h>
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <ranges>
+#include <string>
+#include <string_view>
+#include <vector>
 
 using namespace o2;
 using namespace o2::aod;
 using namespace o2::framework;
 using namespace o2::framework::expressions;
 using namespace o2::soa;
-using namespace o2::aod::pwgem::photonmeson::utils::mcutil;
 using namespace o2::aod::pwgem::dilepton::utils::mcutil;
 
-using MyCollisions = soa::Join<aod::EMEvents, aod::EMEventsMult, aod::EMEventsCent, aod::EMEventsQvec, aod::EMMCEventLabels>;
+using MyCollisions = soa::Join<aod::PMEvents, aod::EMEventsAlias, aod::EMEventsMult_000, aod::EMEventsCent_000, aod::EMMCEventLabels>;
 using MyCollision = MyCollisions::iterator;
 
-using MyMCTracks = soa::Join<aod::EMPrimaryElectronsFromDalitz, aod::EMPrimaryElectronEMEventIds, aod::EMPrimaryElectronMCLabels>;
+using MyMCTracks = soa::Join<aod::EMPrimaryElectronsFromDalitz, aod::EMPrimaryElectronDaEMEventIds, aod::EMPrimaryElectronMCLabels>;
 using MyMCTrack = MyMCTracks::iterator;
 
 struct DalitzEEQCMC {
@@ -103,6 +124,8 @@ struct DalitzEEQCMC {
     Configurable<float> cfg_max_dcaxy{"cfg_max_dcaxy", 1.0, "max dca XY for single track in cm"};
     Configurable<float> cfg_max_dcaz{"cfg_max_dcaz", 1.0, "max dca Z for single track in cm"};
     Configurable<float> cfg_max_dca3dsigma_track{"cfg_max_dca3dsigma_track", 1.5, "max DCA 3D in sigma"};
+    Configurable<bool> includeITSsa{"includeITSsa", false, "Flag to enable ITSsa tracks"};
+    Configurable<float> cfg_max_pt_track_ITSsa{"cfg_max_pt_track_ITSsa", 0.15, "max pt for ITSsa tracks"};
 
     Configurable<int> cfg_pid_scheme{"cfg_pid_scheme", static_cast<int>(DalitzEECut::PIDSchemes::kTOFif), "pid scheme [kTOFif : 0, kTPConly : 1]"};
     Configurable<float> cfg_min_TPCNsigmaEl{"cfg_min_TPCNsigmaEl", -2.0, "min. TPC n sigma for electron inclusion"};
@@ -114,9 +137,9 @@ struct DalitzEEQCMC {
   } dileptoncuts;
 
   o2::ccdb::CcdbApi ccdbApi;
-  Service<o2::ccdb::BasicCCDBManager> ccdb;
-  int mRunNumber;
-  float d_bz;
+  Service<o2::ccdb::BasicCCDBManager> ccdb{};
+  int mRunNumber = 0;
+  float d_bz = 0;
 
   struct : ConfigurableGroup {
     std::string prefix = "mctrackcut_group";
@@ -126,10 +149,10 @@ struct DalitzEEQCMC {
   } mctrackcuts;
 
   HistogramRegistry fRegistry{"output", {}, OutputObjHandlingPolicy::AnalysisObject, false, false};
-  static constexpr std::string_view event_cut_types[2] = {"before/", "after/"};
-  static constexpr std::string_view track_types[2] = {"primary/", "secondary/"};
+  static constexpr std::array<std::string_view, 2> event_cut_types = {"before/", "after/"};
+  static constexpr std::array<std::string_view, 2> track_types = {"primary/", "secondary/"};
 
-  ~DalitzEEQCMC() {}
+  ~DalitzEEQCMC() = default;
 
   void addhistograms()
   {
@@ -149,7 +172,7 @@ struct DalitzEEQCMC {
 
     // reconstructed pair info
     fRegistry.add("Pair/sm/Photon/hMvsPt", "m_{ee} vs. p_{T,ee} ULS", kTH2F, {axis_mass, axis_pt}, true);
-    fRegistry.add("Pair/sm/Photon/hMvsPhiV", "m_{ee} vs. #varphi_{V};#varphi (rad.);m_{ee} (GeV/c^{2})", kTH2F, {{90, 0, M_PI}, {100, 0.0f, 0.1f}}, false);
+    fRegistry.add("Pair/sm/Photon/hMvsPhiV", "m_{ee} vs. #varphi_{V};#varphi (rad.);m_{ee} (GeV/c^{2})", kTH2F, {{90, 0, o2::constants::math::PI}, {100, 0.0f, 0.1f}}, false);
     fRegistry.addClone("Pair/sm/Photon/", "Pair/sm/Pi0/");
     fRegistry.addClone("Pair/sm/Photon/", "Pair/sm/Eta/");
     fRegistry.addClone("Pair/sm/Photon/", "Pair/sm/EtaPrime/");
@@ -160,7 +183,7 @@ struct DalitzEEQCMC {
     // track info
     fRegistry.add("Track/primary/hPt", "pT;p_{T} (GeV/c)", kTH1F, {{1000, 0.0f, 10}}, false);
     fRegistry.add("Track/primary/hQoverPt", "q/pT;q/p_{T} (GeV/c)^{-1}", kTH1F, {{400, -20, 20}}, false);
-    fRegistry.add("Track/primary/hEtaPhi", "#eta vs. #varphi;#varphi (rad.);#eta", kTH2F, {{180, 0, 2 * M_PI}, {40, -2.0f, 2.0f}}, false);
+    fRegistry.add("Track/primary/hEtaPhi", "#eta vs. #varphi;#varphi (rad.);#eta", kTH2F, {{180, 0, o2::constants::math::TwoPI}, {40, -2.0f, 2.0f}}, false);
     fRegistry.add("Track/primary/hDCAxyz", "DCA xy vs. z;DCA_{xy} (cm);DCA_{z} (cm)", kTH2F, {{200, -0.1f, 0.1f}, {200, -0.1f, 0.1f}}, false);
     fRegistry.add("Track/primary/hDCAxyzSigma", "DCA xy vs. z;DCA_{xy} (#sigma);DCA_{z} (#sigma)", kTH2F, {{200, -10.0f, 10.0f}, {200, -10.0f, 10.0f}}, false);
     fRegistry.add("Track/primary/hDCAxyRes_Pt", "DCA_{xy} resolution vs. pT;p_{T} (GeV/c);DCA_{xy} resolution (#mum)", kTH2F, {{200, 0, 10}, {500, 0., 500}}, false);
@@ -184,7 +207,6 @@ struct DalitzEEQCMC {
     fRegistry.add("Track/primary/hChi2TOF", "chi2 of TOF", kTH1F, {{100, 0, 10}}, false);
     fRegistry.add("Track/primary/hTOFbeta", "TOF beta;p_{pv} (GeV/c);#beta", kTH2F, {{1000, 0, 10}, {240, 0, 1.2}}, false);
     fRegistry.add("Track/primary/hTOFNsigmaEl", "TOF n sigma el;p_{pv} (GeV/c);n #sigma_{e}^{TOF}", kTH2F, {{1000, 0, 10}, {100, -5, +5}}, false);
-    fRegistry.add("Track/primary/hTOFNsigmaPi", "TOF n sigma pi;p_{pv} (GeV/c);n #sigma_{#pi}^{TOF}", kTH2F, {{1000, 0, 10}, {100, -5, +5}}, false);
     fRegistry.add("Track/primary/hPtGen_DeltaPtOverPtGen", "electron p_{T} resolution;p_{T}^{gen} (GeV/c);(p_{T}^{rec} - p_{T}^{gen})/p_{T}^{gen}", kTH2F, {{1000, 0, 10}, {200, -1.0f, 1.0f}}, true);
     fRegistry.add("Track/primary/hPtGen_DeltaEta", "electron #eta resolution;p_{T}^{gen} (GeV/c);#eta^{rec} - #eta^{gen}", kTH2F, {{1000, 0, 10}, {100, -0.5f, 0.5f}}, true);
     fRegistry.add("Track/primary/hPtGen_DeltaPhi", "electron #varphi resolution;p_{T}^{gen} (GeV/c);#varphi^{rec} - #varphi^{gen} (rad.)", kTH2F, {{1000, 0, 10}, {100, -0.5f, 0.5f}}, true);
@@ -206,7 +228,7 @@ struct DalitzEEQCMC {
     ccdb->setFatalWhenNull(false);
   }
 
-  template <typename TCollision>
+  template <o2::soa::is_iterator TCollision>
   void initCCDB(TCollision const& collision)
   {
     if (mRunNumber == collision.runNumber()) {
@@ -225,10 +247,11 @@ struct DalitzEEQCMC {
     }
 
     auto run3grp_timestamp = collision.timestamp();
-    o2::parameters::GRPObject* grpo = 0x0;
-    o2::parameters::GRPMagField* grpmag = 0x0;
-    if (!skipGRPOquery)
+    o2::parameters::GRPObject* grpo = nullptr;
+    o2::parameters::GRPMagField* grpmag = nullptr;
+    if (!skipGRPOquery) {
       grpo = ccdb->getForTimeStamp<o2::parameters::GRPObject>(grpPath, run3grp_timestamp);
+    }
     if (grpo) {
       // Fetch magnetic field from ccdb for current collision
       d_bz = grpo->getNominalL3Field();
@@ -282,6 +305,7 @@ struct DalitzEEQCMC {
     fDileptonCut.SetMaxDcaXY(dileptoncuts.cfg_max_dcaxy);
     fDileptonCut.SetMaxDcaZ(dileptoncuts.cfg_max_dcaz);
     fDileptonCut.SetTrackDca3DRange(0.f, dileptoncuts.cfg_max_dca3dsigma_track); // in sigma
+    fDileptonCut.IncludeITSsa(dileptoncuts.includeITSsa, dileptoncuts.cfg_max_pt_track_ITSsa);
 
     // for eID
     fDileptonCut.SetPIDScheme(dileptoncuts.cfg_pid_scheme);
@@ -290,10 +314,10 @@ struct DalitzEEQCMC {
     fDileptonCut.SetTOFNsigmaElRange(dileptoncuts.cfg_min_TOFNsigmaEl, dileptoncuts.cfg_max_TOFNsigmaEl);
   }
 
-  template <typename TTrack, typename TMCParticles>
+  template <o2::soa::is_iterator TTrack, o2::soa::is_table TMCParticles>
   int FindLF(TTrack const& posmc, TTrack const& elemc, TMCParticles const& mcparticles)
   {
-    int arr[] = {
+    std::array<int, 9> arr = {
       FindCommonMotherFrom2Prongs(posmc, elemc, -11, 11, 22, mcparticles),
       FindCommonMotherFrom2Prongs(posmc, elemc, -11, 11, 111, mcparticles),
       FindCommonMotherFrom2Prongs(posmc, elemc, -11, 11, 221, mcparticles),
@@ -303,22 +327,16 @@ struct DalitzEEQCMC {
       FindCommonMotherFrom2Prongs(posmc, elemc, -11, 11, 333, mcparticles),
       FindCommonMotherFrom2Prongs(posmc, elemc, -11, 11, 443, mcparticles),
       FindCommonMotherFrom2Prongs(posmc, elemc, -11, 11, 100443, mcparticles)};
-    int size = sizeof(arr) / sizeof(*arr);
-    int max = *std::max_element(arr, arr + size);
-    return max;
+    return *std::ranges::max_element(arr);
   }
 
-  template <typename T>
+  template <o2::soa::is_iterator T>
   bool isInAcceptance(T const& t1)
   {
-    if ((mctrackcuts.min_mcPt < t1.pt() && t1.pt() < mctrackcuts.max_mcPt) && std::fabs(t1.eta()) < mctrackcuts.max_mcEta) {
-      return true;
-    } else {
-      return false;
-    }
+    return ((mctrackcuts.min_mcPt < t1.pt() && t1.pt() < mctrackcuts.max_mcPt) && std::fabs(t1.eta()) < mctrackcuts.max_mcEta);
   }
 
-  template <typename TCollision, typename TTrack1, typename TTrack2, typename TMCParticles>
+  template <o2::soa::is_iterator TCollision, o2::soa::is_iterator TTrack1, o2::soa::is_iterator TTrack2, o2::soa::is_table TMCParticles>
   bool fillTruePairInfo(TCollision const& collision, TTrack1 const& t1, TTrack2 const& t2, TMCParticles const& mcparticles)
   {
     if (!fDileptonCut.IsSelectedTrack(t1) || !fDileptonCut.IsSelectedTrack(t2)) {
@@ -451,7 +469,7 @@ struct DalitzEEQCMC {
     return true;
   }
 
-  template <int tracktype, typename TTrack>
+  template <int tracktype, o2::soa::is_iterator TTrack>
   void fillTrackInfo(TTrack const& track)
   {
     auto mctrack = track.template emmcparticle_as<aod::EMMCParticles>();
@@ -476,7 +494,6 @@ struct DalitzEEQCMC {
     fRegistry.fill(HIST("Track/") + HIST(track_types[tracktype]) + HIST("hTPCNsigmaEl"), track.tpcInnerParam(), track.tpcNSigmaEl());
     fRegistry.fill(HIST("Track/") + HIST(track_types[tracktype]) + HIST("hTPCNsigmaPi"), track.tpcInnerParam(), track.tpcNSigmaPi());
     fRegistry.fill(HIST("Track/") + HIST(track_types[tracktype]) + HIST("hTOFNsigmaEl"), track.p(), track.tofNSigmaEl());
-    fRegistry.fill(HIST("Track/") + HIST(track_types[tracktype]) + HIST("hTOFNsigmaPi"), track.p(), track.tofNSigmaPi());
     fRegistry.fill(HIST("Track/") + HIST(track_types[tracktype]) + HIST("hTOFbeta"), track.p(), track.beta());
     fRegistry.fill(HIST("Track/") + HIST(track_types[tracktype]) + HIST("hPtGen_DeltaPtOverPtGen"), mctrack.pt(), (track.pt() - mctrack.pt()) / mctrack.pt());
     fRegistry.fill(HIST("Track/") + HIST(track_types[tracktype]) + HIST("hPtGen_DeltaEta"), mctrack.pt(), track.eta() - mctrack.eta());
@@ -485,7 +502,7 @@ struct DalitzEEQCMC {
 
   std::vector<int> used_trackIds;
   SliceCache cache;
-  Preslice<MyMCTracks> perCollision_track = aod::emprimaryelectron::emeventId;
+  Preslice<MyMCTracks> perCollision_track = aod::emprimaryelectronda::pmeventId;
   Filter trackFilter = dileptoncuts.cfg_min_pt_track < o2::aod::track::pt && nabs(o2::aod::track::eta) < dileptoncuts.cfg_max_eta_track && o2::aod::track::tpcChi2NCl < dileptoncuts.cfg_max_chi2tpc && o2::aod::track::itsChi2NCl < dileptoncuts.cfg_max_chi2its && nabs(o2::aod::track::dcaXY) < dileptoncuts.cfg_max_dcaxy && nabs(o2::aod::track::dcaZ) < dileptoncuts.cfg_max_dcaz;
   Filter pidFilter = dileptoncuts.cfg_min_TPCNsigmaEl < o2::aod::pidtpc::tpcNSigmaEl && o2::aod::pidtpc::tpcNSigmaEl < dileptoncuts.cfg_max_TPCNsigmaEl && (o2::aod::pidtpc::tpcNSigmaPi < dileptoncuts.cfg_min_TPCNsigmaPi || dileptoncuts.cfg_max_TPCNsigmaPi < o2::aod::pidtpc::tpcNSigmaPi);
   using FilteredMyMCTracks = soa::Filtered<MyMCTracks>;
@@ -502,7 +519,7 @@ struct DalitzEEQCMC {
     for (auto& collision : collisions) {
       initCCDB(collision);
 
-      float centralities[3] = {collision.centFT0M(), collision.centFT0A(), collision.centFT0C()};
+      std::array<float, 3> centralities = {collision.centFT0M(), collision.centFT0A(), collision.centFT0C()};
       if (centralities[cfgCentEstimator] < cfgCentMin || cfgCentMax < centralities[cfgCentEstimator]) {
         continue;
       }
@@ -511,15 +528,15 @@ struct DalitzEEQCMC {
       if (!fEMEventCut.IsSelected(collision)) {
         continue;
       }
-      if (!(eventcuts.cfgOccupancyMin <= collision.trackOccupancyInTimeRange() && collision.trackOccupancyInTimeRange() < eventcuts.cfgOccupancyMax)) {
+      if (!(eventcuts.cfgOccupancyMin <= collision.trackOccupancyInTimeRange()) || !(collision.trackOccupancyInTimeRange() < eventcuts.cfgOccupancyMax)) {
         continue;
       }
       o2::aod::pwgem::photonmeson::utils::eventhistogram::fillEventInfo<1>(&fRegistry, collision);
       fRegistry.fill(HIST("Event/before/hCollisionCounter"), 12.0); // accepted
       fRegistry.fill(HIST("Event/after/hCollisionCounter"), 12.0);  // accepted
 
-      auto posTracks_per_coll = posTracks->sliceByCached(o2::aod::emprimaryelectron::emeventId, collision.globalIndex(), cache);
-      auto negTracks_per_coll = negTracks->sliceByCached(o2::aod::emprimaryelectron::emeventId, collision.globalIndex(), cache);
+      auto posTracks_per_coll = posTracks->sliceByCached(o2::aod::emprimaryelectronda::pmeventId, collision.globalIndex(), cache);
+      auto negTracks_per_coll = negTracks->sliceByCached(o2::aod::emprimaryelectronda::pmeventId, collision.globalIndex(), cache);
       // LOGF(info, "centrality = %f , posTracks_per_coll.size() = %d, negTracks_per_coll.size() = %d", centralities[cfgCentEstimator], posTracks_per_coll.size(), negTracks_per_coll.size());
 
       for (auto& [pos, ele] : combinations(CombinationsFullIndexPolicy(posTracks_per_coll, negTracks_per_coll))) { // ULS
@@ -542,7 +559,7 @@ struct DalitzEEQCMC {
     // all MC tracks which belong to the MC event corresponding to the current reconstructed event
 
     for (auto& collision : collisions) {
-      float centralities[3] = {collision.centFT0M(), collision.centFT0A(), collision.centFT0C()};
+      std::array<float, 3> centralities = {collision.centFT0M(), collision.centFT0A(), collision.centFT0C()};
       if (centralities[cfgCentEstimator] < cfgCentMin || cfgCentMax < centralities[cfgCentEstimator]) {
         continue;
       }
@@ -550,7 +567,7 @@ struct DalitzEEQCMC {
       if (!fEMEventCut.IsSelected(collision)) {
         continue;
       }
-      if (!(eventcuts.cfgOccupancyMin <= collision.trackOccupancyInTimeRange() && collision.trackOccupancyInTimeRange() < eventcuts.cfgOccupancyMax)) {
+      if (!(eventcuts.cfgOccupancyMin <= collision.trackOccupancyInTimeRange()) || !(collision.trackOccupancyInTimeRange() < eventcuts.cfgOccupancyMax)) {
         continue;
       }
       auto mccollision = collision.emmcevent_as<aod::EMMCEvents>();
@@ -621,8 +638,8 @@ struct DalitzEEQCMC {
   PROCESS_SWITCH(DalitzEEQCMC, processDummy, "Dummy function", false);
 };
 
-WorkflowSpec defineDataProcessing(ConfigContext const& cfgc)
+WorkflowSpec defineDataProcessing(ConfigContext const& context)
 {
   return WorkflowSpec{
-    adaptAnalysisTask<DalitzEEQCMC>(cfgc, TaskName{"dalitz-ee-qc-mc"})};
+    adaptAnalysisTask<DalitzEEQCMC>(context, TaskName{"dalitz-ee-qc-mc"})};
 }

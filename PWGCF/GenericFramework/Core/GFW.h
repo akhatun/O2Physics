@@ -9,23 +9,20 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-/*
-Author: Vytautas Vislavicius
-Extention of Generic Flow (https://arxiv.org/abs/1312.3572 by A. Bilandzic et al.)
-Class steers the initialization and calculation of n-particle correlations. Uses recursive function, all terms are calculated only once.
-Latest version includes the calculation of any number of gaps and any combination of harmonics (including eg symmetric cumulants, etc.)
-If used, modified, or distributed, please aknowledge the author of this code.
-*/
+/// \file GFW.h/.cxx
+/// \brief Class steers the initialization and calculation of n-particle correlations. Uses recursive function, all terms are calculated only once.
+/// \author Emil Gorm Nielsen (ack. V. Vislavicius), NBI, emil.gorm.nielsen@cern.ch
+
 #ifndef PWGCF_GENERICFRAMEWORK_CORE_GFW_H_
 #define PWGCF_GENERICFRAMEWORK_CORE_GFW_H_
 
 #include "GFWCumulant.h"
-#include "GFWPowerArray.h"
-#include <vector>
+
+#include <complex>
+#include <cstdio>
 #include <string>
 #include <utility>
-#include <algorithm>
-#include <complex>
+#include <vector>
 
 class GFW
 {
@@ -56,10 +53,10 @@ class GFW
   ~GFW();
   std::vector<Region> fRegions;
   std::vector<GFWCumulant> fCumulants;
-  void AddRegion(std::string refName, double lEtaMin, double lEtaMax, int lNpT, int BitMask);
-  void AddRegion(std::string refName, std::vector<int> lNparVec, double lEtaMin, double lEtaMax, int lNpT, int BitMask); // Legacy
-  void AddRegion(std::string refName, int lNhar, int lNpar, double lEtaMin, double lEtaMax, int lNpT, int BitMask);      // Legacy support, all powers are the same
-  void AddRegion(std::string refName, int lNhar, int* lNparVec, double lEtaMin, double lEtaMax, int lNpT, int BitMask);  // Legacy support, array instead of a vector
+  void AddRegion(const std::string& refName, double lEtaMin, double lEtaMax, int lNpT, int BitMask);
+  void AddRegion(const std::string& refName, const std::vector<int>& lNparVec, double lEtaMin, double lEtaMax, int lNpT, int BitMask); // Legacy
+  void AddRegion(std::string refName, int lNhar, int lNpar, double lEtaMin, double lEtaMax, int lNpT, int BitMask);                    // Legacy support, all powers are the same
+  void AddRegion(std::string refName, int lNhar, int* lNparVec, double lEtaMin, double lEtaMax, int lNpT, int BitMask);                // Legacy support, array instead of a vector
   int CreateRegions();
   void Fill(double eta, int ptin, double phi, double weight, int mask, double secondWeight = -1);
   void Clear();
@@ -74,9 +71,9 @@ class GFW
   std::complex<double> TwoRec(int n1, int n2, int p1, int p2, int ptbin, GFWCumulant*, GFWCumulant*, GFWCumulant*);
   std::complex<double> RecursiveCorr(GFWCumulant* qpoi, GFWCumulant* qref, GFWCumulant* qol, int ptbin, std::vector<int>& hars, std::vector<int>& pows); // POI, Ref. flow, overlapping region
   std::complex<double> RecursiveCorr(GFWCumulant* qpoi, GFWCumulant* qref, GFWCumulant* qol, int ptbin, std::vector<int>& hars);                         // POI, Ref. flow, overlapping region
-  void AddRegion(Region inreg) { fRegions.push_back(inreg); }
+  void AddRegion(const Region& inreg) { fRegions.push_back(inreg); }
   Region GetRegion(int index) { return fRegions.at(index); }
-  int FindRegionByName(std::string refName);
+  int FindRegionByName(const std::string& refName);
   std::vector<std::pair<int, std::vector<int>>> GetHarmonicsSingleConfig(const CorrConfig&);
   // Calculating functions:
   std::complex<double> Calculate(int poi, int ref, std::vector<int> hars, int ptbin = 0); // For differential, need POI and reference

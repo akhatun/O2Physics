@@ -13,29 +13,35 @@
 /// \brief basic per run check of the ITS dead chips and of the hadronic interaction rate
 /// \author victor.gonzalez.sebastian@gmail.com
 
-#include <array>
-#include <cmath>
-#include <unordered_map>
-#include <memory>
-#include <vector>
-#include <string>
-
-#include "CCDB/BasicCCDBManager.h"
-#include "Common/CCDB/ctpRateFetcher.h"
-
-#include "DataFormatsParameters/AggregatedRunInfo.h"
-#include "DataFormatsITSMFT/NoiseMap.h" // missing include in TimeDeadMap.h
-#include "DataFormatsITSMFT/TimeDeadMap.h"
-#include "ITSMFTReconstruction/ChipMappingITS.h"
-
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/ASoAHelpers.h"
-#include "Framework/HistogramRegistry.h"
-#include "Framework/runDataProcessing.h"
-
 #include "PWGCF/DataModel/DptDptFiltered.h"
-#include "PWGCF/TableProducer/dptDptFilter.h"
+
+#include "Common/CCDB/ctpRateFetcher.h"
+#include "Common/DataModel/EventSelection.h"
+
+#include <CCDB/BasicCCDBManager.h>
+#include <CommonConstants/LHCConstants.h>
+#include <DataFormatsITSMFT/TimeDeadMap.h>
+#include <DataFormatsParameters/AggregatedRunInfo.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisHelpers.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TH1.h>
+#include <TH2.h>
+#include <TString.h>
+
+#include <cmath>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 using namespace o2;
 using namespace o2::framework;
@@ -70,7 +76,6 @@ struct DptDptPerRunQc {
   void initCCDB(aod::BCsWithTimestamps::iterator const& bc)
   {
     using namespace perrunqctask;
-    using namespace analysis::dptdptfilter;
 
     if (mRunNumber == bc.runNumber()) {
       return;
@@ -117,7 +122,6 @@ struct DptDptPerRunQc {
   void process(soa::Join<aod::Collisions, aod::EvSels, aod::DptDptCFCollisionsInfo>::iterator const& collision, aod::BCsWithTimestamps const&)
   {
     using namespace perrunqctask;
-    using namespace analysis::dptdptfilter;
 
     auto bc = collision.bc_as<aod::BCsWithTimestamps>();
     initCCDB(bc);

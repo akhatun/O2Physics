@@ -15,36 +15,46 @@
 ///
 /// \author Adrian Fereydon Nassirpour <adrian.fereydon.nassirpour@cern.ch>
 
-#include <string>
-#include <vector>
-#include <TLorentzVector.h>
-#include <TVector2.h>
-#include <algorithm>
-#include <iostream>
-
-#include "TRandom.h"
-#include "Framework/ASoA.h"
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/HistogramRegistry.h"
-#include "Framework/runDataProcessing.h"
-#include "ReconstructionDataFormats/Track.h"
-
-#include "Common/Core/RecoDecay.h"
-#include "Common/Core/TrackSelection.h"
-#include "Common/Core/TrackSelectionDefaults.h"
-#include "Common/Core/trackUtilities.h"
-#include "Common/DataModel/EventSelection.h"
-#include "Common/DataModel/TrackSelectionTables.h"
-#include "Common/DataModel/Multiplicity.h"
-#include "Common/DataModel/PIDResponse.h"
-#include "CommonConstants/PhysicsConstants.h"
-
-#include "PWGJE/Core/FastJetUtilities.h"
 #include "PWGJE/Core/JetDerivedDataUtilities.h"
 #include "PWGJE/DataModel/Jet.h"
+#include "PWGJE/DataModel/JetReducedData.h"
 
-#include "PWGLF/DataModel/LFResonanceTables.h"
+#include "Common/DataModel/EventSelection.h"
+#include "Common/DataModel/Multiplicity.h"
+#include "Common/DataModel/PIDResponseTOF.h"
+#include "Common/DataModel/PIDResponseTPC.h"
+#include "Common/DataModel/TrackSelectionTables.h"
+
+#include <CommonConstants/PhysicsConstants.h>
+#include <Framework/ASoA.h>
+#include <Framework/ASoAHelpers.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TLorentzVector.h>
+#include <TMath.h>
+#include <TMathBase.h>
+#include <TRandom.h>
+#include <TVector2.h>
+
+#include <RtypesCore.h>
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstddef>
+#include <cstdlib>
+#include <iostream>
+#include <string>
+#include <vector>
+
+#include <stdlib.h>
 
 using namespace o2;
 using namespace o2::framework;
@@ -284,7 +294,7 @@ struct phiInJets {
   /////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////
   template <typename TrackType>
-  bool trackSelection(const TrackType track)
+  bool trackSelection(const TrackType& track)
   {
     // basic track cuts
     if (track.pt() < cfgtrkMinPt)
@@ -386,7 +396,7 @@ struct phiInJets {
   /////////////////////////////////////////////////////////////////////////////
 
   template <typename JetType>
-  double DistinguishJets(const JetType& jets, const TLorentzVector lResonance)
+  double DistinguishJets(const JetType& jets, const TLorentzVector& lResonance)
   {
     if (cDebugLevel > 0)
       std::cout << "oof, multiple jets fit to the same phi. Time to find the best phi-jet link" << std::endl;
@@ -409,7 +419,7 @@ struct phiInJets {
   }
 
   template <typename Jet_pt, typename Jet_phi, typename Jet_eta>
-  double DistinguishJetsMC(const Jet_pt& jet_pt, const Jet_phi& jet_phi, const Jet_eta& jet_eta, const TLorentzVector lResonance)
+  double DistinguishJetsMC(const Jet_pt& jet_pt, const Jet_phi& jet_phi, const Jet_eta& jet_eta, const TLorentzVector& lResonance)
   {
     if (cDebugLevel > 0)
       std::cout << "oof, multiple jets fit to the same phi. Time to find the best phi-jet link" << std::endl;
@@ -583,7 +593,7 @@ struct phiInJets {
     JEhistos.fill(HIST("hNResoPerEventInJet"), nResoInTrig);
 
     int nJets = 0;
-    for (auto chargedjet : chargedjets) {
+    for (const auto& chargedjet : chargedjets) {
       JEhistos.fill(HIST("FJetaHistogram"), chargedjet.eta());
       JEhistos.fill(HIST("FJphiHistogram"), chargedjet.phi());
       JEhistos.fill(HIST("FJptHistogram"), chargedjet.pt());
@@ -758,10 +768,9 @@ struct phiInJets {
           JEhistos.fill(HIST("hMCRec_dEta_qa_rot_distribution"), dEta_rot_qa);
 
           lResonance = lDecayDaughter1 + lDecayDaughter2;
-          if (cfgIsKstar)
-            lRotationalResonance = lDecayDaughter1 + lRotationalTrack;
 
           if (cfgIsKstar) {
+            lRotationalResonance = lDecayDaughter1 + lRotationalTrack;
             JEhistos.fill(HIST("hMCRec_R_distribution"), dR);
             JEhistos.fill(HIST("hMCRec_hUSS_Rotational"), 1.0, lRotationalResonance.Pt(), lResonance.M());
             JEhistos.fill(HIST("hMCRec_R_Rotation_distribution"), dR_rot);
@@ -930,10 +939,9 @@ struct phiInJets {
 
             if (jetFlag) {
               if (cfgDaughterQAHists) {
-                if (lResonance.M() > 1.005 && lResonance.M() < 1.035)
+                if (lResonance.M() > 1.005 && lResonance.M() < 1.035) {
                   RealPhiCandInJet++;
-              }
-              if (cfgDaughterQAHists) {
+                }
                 JEhistos.fill(HIST("hMCRec_nonmatch_hUSS_INSIDE_pt_v_eta"), lResonance.Pt(), lResonance.Eta());
                 // if (lResonance.Pt() > 2.0 && lResonance.Pt() < 3)
                 //   JEhistos.fill(HIST("hMCRec_nonmatch_hUSS_INSIDE_1D_2_3"), lResonance.M());
@@ -1225,11 +1233,11 @@ struct phiInJets {
         double TEMP_phi_dgth_pz[2] = {0};
 
         bool good_daughter[2] = {false};
-        int dgth_index = 0;
         // First we check for Forced BR
         // if we check for Phi
         if (!cfgIsKstar) {
           if (mcParticle.has_daughters()) {
+            int dgth_index = 0;
             for (auto& dgth : mcParticle.daughters_as<aod::JetParticles>()) {
               if (std::fabs(dgth.pdgCode()) != 321) {
                 skip = true;

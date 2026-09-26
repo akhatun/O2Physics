@@ -9,38 +9,37 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-#include <climits>
-#include <cstdlib>
-#include <map>
-#include <memory>
-#include <sstream>
-#include <string>
-#include <vector>
-#include <cmath>
-#include <set>
-#include <utility>
-
-#include "Framework/runDataProcessing.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/ASoA.h"
-#include "Framework/HistogramRegistry.h"
+#include "PWGJE/Core/JetDerivedDataUtilities.h"
+#include "PWGJE/DataModel/EMCALClusters.h"
 
 #include "Common/DataModel/EventSelection.h"
-#include "Common/DataModel/Centrality.h"
-#include "Common/DataModel/PIDResponse.h"
 #include "Common/DataModel/TrackSelectionTables.h"
 
-#include "EMCALBase/Geometry.h"
-#include "EMCALCalib/BadChannelMap.h"
-#include "PWGJE/DataModel/JetReducedData.h"
-#include "PWGJE/DataModel/EMCALClusters.h"
-#include "PWGJE/Core/JetDerivedDataUtilities.h"
+#include <EMCALBase/Geometry.h>
+#include <EMCALCalib/BadChannelMap.h>
+#include <Framework/ASoA.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/runDataProcessing.h>
 
-#include "DataFormatsEMCAL/Cell.h"
-#include "DataFormatsEMCAL/Constants.h"
-#include "DataFormatsEMCAL/AnalysisCluster.h"
-#include "CommonDataFormat/InteractionRecord.h"
+#include <TH1.h>
+#include <TH3.h>
+
+#include <climits>
+#include <cmath>
+#include <cstdlib>
+#include <set>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include <math.h>
 
 // \struct PhotonIsolationQA
 /// \brief Task to select emcal clusters originating from promt photons
@@ -270,7 +269,7 @@ struct PhotonIsolationQA {
     return Pt_Iso;
   }
 
-  void fillclusterhistos(const auto cluster, HistogramRegistry registry, double weight = 1.0)
+  void fillclusterhistos(const auto& cluster, HistogramRegistry registry, double weight = 1.0)
   {
     registry.fill(HIST("hClusterLocation"), cluster.eta(), cluster.phi());
     if (isMC == true) {
@@ -398,7 +397,7 @@ struct PhotonIsolationQA {
   // process monte carlo data
   void processMC(aod::BCs const& bcs, selectedMcCollisions const& Collisions, selectedMCClusters const& mcclusters, aod::McParticles const&, myGlobTracks const& tracks, o2::aod::EMCALMatchedTracks const& matchedtracks, aod::Calos const&, aod::EMCALClusterCells const& ClusterCells)
   {
-    for (auto bc : bcs) {
+    for (const auto& bc : bcs) {
       auto collisionsInBC = Collisions.sliceBy(McCollisionsPerBC, bc.globalIndex());
       MC_Info.fill(HIST("hCollperBC"), collisionsInBC.size());
       if (collisionsInBC.size() == 1) {
@@ -462,7 +461,7 @@ struct PhotonIsolationQA {
 
   void processData(aod::BCs const& bcs, selectedCollisions const& Collisions, selectedClusters const& clusters, o2::aod::EMCALMatchedTracks const& matchedtracks, myGlobTracks const& tracks, aod::Calos const&, aod::EMCALClusterCells const& ClusterCells)
   {
-    for (auto bc : bcs) {
+    for (const auto& bc : bcs) {
       auto collisionsInBC = Collisions.sliceBy(collisionsPerBC, bc.globalIndex());
       Data_Info.fill(HIST("hCollperBC"), collisionsInBC.size());
       if (collisionsInBC.size() == 1) {

@@ -17,13 +17,12 @@
 #ifndef PWGLF_DATAMODEL_REDUCED3BODYTABLES_H_
 #define PWGLF_DATAMODEL_REDUCED3BODYTABLES_H_
 
-#include <cmath>
-#include "Framework/AnalysisDataModel.h"
-#include "Common/Core/RecoDecay.h"
-#include "CommonConstants/PhysicsConstants.h"
-#include "Common/DataModel/Multiplicity.h"
 #include "Common/DataModel/Centrality.h"
-#include "PWGLF/DataModel/Vtx3BodyTables.h"
+#include "Common/DataModel/Multiplicity.h"
+
+#include <Framework/AnalysisDataModel.h>
+
+#include <cmath>
 
 namespace o2::aod
 {
@@ -86,6 +85,7 @@ DECLARE_SOA_TABLE_FULL(StoredRedIUTracks, "RedIUTracks", "AOD", "REDIUTRACK", //
                        track::HasITS<track::v001::DetectorMap>,
                        track::HasTPC<track::v001::DetectorMap>,
                        track::HasTOF<track::v001::DetectorMap>,
+                       track::HasTRD<track::v001::DetectorMap>,
                        track::TPCNClsFound<track::TPCNClsFindable, track::TPCNClsFindableMinusFound>,
                        track::TPCNClsCrossedRows<track::TPCNClsFindable, track::TPCNClsFindableMinusCrossedRows>,
                        track::v001::ITSClsSizeInLayer<track::ITSClusterSizes>,

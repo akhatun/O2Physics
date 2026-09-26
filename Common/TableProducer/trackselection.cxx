@@ -17,14 +17,21 @@
 /// \brief Task performing basic track selection.
 ///
 
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/runDataProcessing.h"
 #include "Common/Core/TrackSelection.h"
+
+#include "Common/Core/TableHelper.h"
 #include "Common/Core/TrackSelectionDefaults.h"
 #include "Common/DataModel/TrackSelectionTables.h"
-#include "Common/Core/trackUtilities.h"
-#include "TableHelper.h"
+
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisHelpers.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/DataTypes.h>
+#include <Framework/InitContext.h>
+#include <Framework/runDataProcessing.h>
+
+#include <cstdint>
 
 using namespace o2;
 using namespace o2::framework;
@@ -61,8 +68,8 @@ struct TrackSelectionTask {
   void init(InitContext& initContext)
   {
     // Check which tables are used
-    enableFlagIfTableRequired(initContext, "TrackSelection", produceTable);
-    enableFlagIfTableRequired(initContext, "TrackSelectionExtension", produceFBextendedTable);
+    o2::common::core::enableFlagIfTableRequired(initContext, "TrackSelection", produceTable);
+    o2::common::core::enableFlagIfTableRequired(initContext, "TrackSelectionExtension", produceFBextendedTable);
 
     // Set up the track cuts
     switch (itsMatching) {
@@ -149,11 +156,12 @@ struct TrackSelectionTask {
       return;
     }
     if (isRun3) {
-      for (auto& track : tracks) {
+      for (const auto& track : tracks) {
+        const o2::aod::track::TrackSelectionFlags::flagtype trackflagGlob = globalTracks.IsSelectedMask(track);
 
         if (produceTable == 1) {
           filterTable((uint8_t)0,
-                      globalTracks.IsSelectedMask(track),
+                      trackflagGlob,
                       filtBit1.IsSelected(track),
                       filtBit2.IsSelected(track),
                       filtBit3.IsSelected(track),
@@ -161,7 +169,6 @@ struct TrackSelectionTask {
                       filtBit5.IsSelected(track));
         }
         if (produceFBextendedTable == 1) {
-          o2::aod::track::TrackSelectionFlags::flagtype trackflagGlob = globalTracks.IsSelectedMask(track);
           o2::aod::track::TrackSelectionFlags::flagtype trackflagFB1 = filtBit1.IsSelectedMask(track);
           o2::aod::track::TrackSelectionFlags::flagtype trackflagFB2 = filtBit2.IsSelectedMask(track);
           // o2::aod::track::TrackSelectionFlags::flagtype trackflagFB3 = filtBit3.IsSelectedMask(track); // only temporarily commented, will be used
@@ -190,11 +197,11 @@ struct TrackSelectionTask {
       return;
     }
 
-    for (auto& track : tracks) {
+    for (const auto& track : tracks) {
       o2::aod::track::TrackSelectionFlags::flagtype trackflagGlob = globalTracks.IsSelectedMask(track);
       if (produceTable == 1) {
         filterTable((uint8_t)globalTracksSDD.IsSelected(track),
-                    globalTracks.IsSelectedMask(track),
+                    trackflagGlob,
                     filtBit1.IsSelected(track),
                     filtBit2.IsSelected(track),
                     filtBit3.IsSelected(track),

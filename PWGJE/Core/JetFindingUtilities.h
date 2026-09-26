@@ -17,37 +17,31 @@
 #ifndef PWGJE_CORE_JETFINDINGUTILITIES_H_
 #define PWGJE_CORE_JETFINDINGUTILITIES_H_
 
-#include <array>
-#include <vector>
-#include <string>
-#include <cmath>
-#include <memory>
-#include <TRandom3.h>
-
-#include "Framework/AnalysisTask.h"
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/ASoA.h"
-#include "Framework/O2DatabasePDGPlugin.h"
-#include "Framework/HistogramRegistry.h"
-
-#include "Framework/Logger.h"
-#include "Common/Core/TrackSelection.h"
-#include "Common/Core/TrackSelectionDefaults.h"
-#include "Common/DataModel/EventSelection.h"
-#include "Common/DataModel/TrackSelectionTables.h"
-#include "PWGJE/DataModel/EMCALClusters.h"
-
-#include "PWGHF/DataModel/CandidateReconstructionTables.h"
-#include "PWGHF/DataModel/CandidateSelectionTables.h"
-
-// #include "PWGJE/Core/JetBkgSubUtils.h"
 #include "PWGJE/Core/FastJetUtilities.h"
+#include "PWGJE/Core/JetCandidateUtilities.h"
 #include "PWGJE/Core/JetDerivedDataUtilities.h"
 #include "PWGJE/Core/JetFinder.h"
 #include "PWGJE/DataModel/Jet.h"
+#include "PWGJE/DataModel/JetReducedData.h"
 
-#include "PWGJE/Core/JetCandidateUtilities.h"
-#include "PWGJE/Core/JetHFUtilities.h"
+#include <CommonConstants/PhysicsConstants.h>
+#include <Framework/ASoA.h>
+#include <Framework/AnalysisHelpers.h>
+#include <Framework/O2DatabasePDGPlugin.h>
+
+#include <THn.h>
+
+#include <fastjet/ClusterSequenceArea.hh>
+#include <fastjet/PseudoJet.hh>
+
+#include <cmath>
+#include <memory>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+#include <math.h>
 
 namespace jetfindingutilities
 {
@@ -89,6 +83,29 @@ constexpr bool isEMCALClusterTable()
 }
 
 /**
+ * performs all track selections
+ *
+ * @param track track to be checked
+ * @param trackSelection track selection to be applied to tracks
+ * @param candidate optional HF candidiate
+ */
+
+template <typename T, typename U>
+bool isTrackSelected(T const& track, int trackSelection, const U* candidate = nullptr)
+{
+
+  if (!jetderiveddatautilities::selectTrack(track, trackSelection)) {
+    return false;
+  }
+  if (candidate != nullptr) {
+    if (jetcandidateutilities::isDaughterTrack(track, *candidate)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Adds tracks to a fastjet inputParticles list
  *
  * @param inputParticles fastjet container
@@ -98,24 +115,12 @@ constexpr bool isEMCALClusterTable()
  */
 
 template <typename T, typename U>
-void analyseTracks(std::vector<fastjet::PseudoJet>& inputParticles, T const& tracks, int trackSelection, double trackingEfficinecy, const U* candidate = nullptr)
+void analyseTracks(std::vector<fastjet::PseudoJet>& inputParticles, T const& tracks, int trackSelection, const U* candidate = nullptr)
 {
   for (auto& track : tracks) {
-    if (!jetderiveddatautilities::selectTrack(track, trackSelection)) {
-      continue;
+    if (isTrackSelected(track, trackSelection, candidate)) {
+      fastjetutilities::fillTracks(track, inputParticles, track.globalIndex());
     }
-    if (candidate != nullptr) {
-      if (jetcandidateutilities::isDaughterTrack(track, *candidate, tracks)) {
-        continue;
-      }
-    }
-    if (trackingEfficinecy < 0.999) { // this code is a bit ugly but it stops us needing to do the random generation unless asked for
-      TRandom3 randomNumber(0);
-      if (randomNumber.Rndm() > trackingEfficinecy) { // Is Rndm ok to use?
-        continue;
-      }
-    }
-    fastjetutilities::fillTracks(track, inputParticles, track.globalIndex());
   }
 }
 
@@ -129,22 +134,21 @@ void analyseTracks(std::vector<fastjet::PseudoJet>& inputParticles, T const& tra
  */
 
 template <typename T, typename U>
-void analyseTracksMultipleCandidates(std::vector<fastjet::PseudoJet>& inputParticles, T const& tracks, int trackSelection, double trackingEfficinecy, U const& candidates)
+void analyseTracksMultipleCandidates(std::vector<fastjet::PseudoJet>& inputParticles, T const& tracks, int trackSelection, U const& candidates)
 {
   for (auto& track : tracks) {
+    bool isSelected = true;
     if (!jetderiveddatautilities::selectTrack(track, trackSelection)) {
       continue;
     }
     for (auto& candidate : candidates) {
-      if (jetcandidateutilities::isDaughterTrack(track, candidate, tracks)) {
-        continue;
+      if (jetcandidateutilities::isDaughterTrack(track, candidate)) {
+        isSelected = false;
+        break;
       }
     }
-    if (trackingEfficinecy < 0.999) { // this code is a bit ugly but it stops us needing to do the random generation unless asked for
-      TRandom3 randomNumber(0);
-      if (randomNumber.Rndm() > trackingEfficinecy) { // Is Rndm ok to use?
-        continue;
-      }
+    if (!isSelected) {
+      continue;
     }
     fastjetutilities::fillTracks(track, inputParticles, track.globalIndex());
   }
@@ -157,10 +161,13 @@ void analyseTracksMultipleCandidates(std::vector<fastjet::PseudoJet>& inputParti
  * @param clusters track table to be added
  */
 template <typename T>
-void analyseClusters(std::vector<fastjet::PseudoJet>& inputParticles, T const& clusters, int hadronicCorrectionType = 0)
+void analyseClusters(std::vector<fastjet::PseudoJet>& inputParticles, T const& clusters, int clusterDefinition, int hadronicCorrectionType)
 {
-  for (auto& cluster : *clusters) {
+  for (auto const& cluster : clusters) {
     // add cluster selections
+    if (cluster.definition() != clusterDefinition) {
+      continue;
+    }
     fastjetutilities::fillClusters(cluster, inputParticles, cluster.globalIndex(), hadronicCorrectionType);
   }
 }
@@ -188,7 +195,7 @@ bool analyseCandidate(std::vector<fastjet::PseudoJet>& inputParticles, T const& 
   if (candidate.pt() < candPtMin || candidate.pt() >= candPtMax) {
     return false;
   }
-  fastjetutilities::fillTracks(candidate, inputParticles, candidate.globalIndex(), static_cast<int>(JetConstituentStatus::candidate), candMass);
+  fastjetutilities::fillTracks(candidate, inputParticles, candidate.globalIndex(), JetConstituentStatus::candidate, candMass);
   return true;
 }
 
@@ -255,7 +262,7 @@ bool analyseV0s(std::vector<fastjet::PseudoJet>& inputParticles, T const& v0s, f
     if (v0.pt() < v0PtMin || v0.pt() >= v0PtMax) {
       continue;
     }
-    fastjetutilities::fillTracks(v0, inputParticles, v0.globalIndex(), static_cast<int>(JetConstituentStatus::candidate), v0Mass);
+    fastjetutilities::fillTracks(v0, inputParticles, v0.globalIndex(), JetConstituentStatus::candidate, v0Mass);
     nSelectedV0s++;
   }
   if (nSelectedV0s > 0) {
@@ -277,9 +284,9 @@ bool analyseV0s(std::vector<fastjet::PseudoJet>& inputParticles, T const& v0s, f
  * @param doHFJetFinding set whether only jets containing a HF candidate are saved
  */
 template <typename T, typename U, typename V>
-void findJets(JetFinder& jetFinder, std::vector<fastjet::PseudoJet>& inputParticles, float jetPtMin, float jetPtMax, std::vector<double> jetRadius, float jetAreaFractionMin, T const& collision, U& jetsTable, V& constituentsTable, std::shared_ptr<THn> thnSparseJet, bool fillThnSparse, bool doCandidateJetFinding = false)
+void findJets(JetFinder& jetFinder, std::vector<fastjet::PseudoJet>& inputParticles, float jetPtMin, float jetPtMax, std::vector<double> jetRadius, float jetAreaFractionMin, T const& collision, U& jetsTable, V& constituentsTable, const std::shared_ptr<THn>& thnSparseJet, bool fillThnSparse, bool doCandidateJetFinding = false)
 {
-  auto jetRValues = static_cast<std::vector<double>>(jetRadius);
+  auto jetRValues = static_cast<std::vector<double>>(std::move(jetRadius));
   jetFinder.jetPtMin = jetPtMin;
   jetFinder.jetPtMax = jetPtMax;
   for (auto R : jetRValues) {
@@ -293,11 +300,11 @@ void findJets(JetFinder& jetFinder, std::vector<fastjet::PseudoJet>& inputPartic
       if (fillThnSparse) {
         thnSparseJet->Fill(R, jet.pt(), jet.eta(), jet.phi()); // important for normalisation in V0Jet analyses to store all jets, including those that aren't V0s
       }
-      bool isCandidateJet = false;
       if (doCandidateJetFinding) {
+        bool isCandidateJet = false;
         for (const auto& constituent : jet.constituents()) {
-          auto constituentStatus = constituent.template user_info<fastjetutilities::fastjet_user_info>().getStatus();
-          if (constituentStatus == static_cast<int>(JetConstituentStatus::candidate)) { // note currently we cannot run V0 and HF in the same jet. If we ever need to we can seperate the loops
+          JetConstituentStatus constituentStatus = constituent.template user_info<fastjetutilities::fastjet_user_info>().getStatus();
+          if (constituentStatus == JetConstituentStatus::candidate) { // note currently we cannot run V0 and HF in the same jet. If we ever need to we can seperate the loops
             isCandidateJet = true;
             break;
           }
@@ -312,13 +319,13 @@ void findJets(JetFinder& jetFinder, std::vector<fastjet::PseudoJet>& inputPartic
       jetsTable(collision.globalIndex(), jet.pt(), jet.eta(), jet.phi(),
                 jet.E(), jet.rapidity(), jet.m(), jet.has_area() ? jet.area() : 0., std::round(R * 100));
       for (const auto& constituent : sorted_by_pt(jet.constituents())) {
-        if (constituent.template user_info<fastjetutilities::fastjet_user_info>().getStatus() == static_cast<int>(JetConstituentStatus::track)) {
+        if (constituent.template user_info<fastjetutilities::fastjet_user_info>().getStatus() == JetConstituentStatus::track) {
           tracks.push_back(constituent.template user_info<fastjetutilities::fastjet_user_info>().getIndex());
         }
-        if (constituent.template user_info<fastjetutilities::fastjet_user_info>().getStatus() == static_cast<int>(JetConstituentStatus::cluster)) {
+        if (constituent.template user_info<fastjetutilities::fastjet_user_info>().getStatus() == JetConstituentStatus::cluster) {
           clusters.push_back(constituent.template user_info<fastjetutilities::fastjet_user_info>().getIndex());
         }
-        if (constituent.template user_info<fastjetutilities::fastjet_user_info>().getStatus() == static_cast<int>(JetConstituentStatus::candidate)) {
+        if (constituent.template user_info<fastjetutilities::fastjet_user_info>().getStatus() == JetConstituentStatus::candidate) {
           cands.push_back(constituent.template user_info<fastjetutilities::fastjet_user_info>().getIndex());
         }
       }
@@ -338,7 +345,7 @@ void findJets(JetFinder& jetFinder, std::vector<fastjet::PseudoJet>& inputPartic
  * @param candidate optional hf candidiate
  */
 template <bool checkIsDaughter, typename T, typename U>
-void analyseParticles(std::vector<fastjet::PseudoJet>& inputParticles, std::string particleSelection, int jetTypeParticleLevel, T const& particles, o2::framework::Service<o2::framework::O2DatabasePDG> pdgDatabase, const U* candidate = nullptr)
+void analyseParticles(std::vector<fastjet::PseudoJet>& inputParticles, const std::string& particleSelection, int jetTypeParticleLevel, T const& particles, o2::framework::Service<o2::framework::O2DatabasePDG> pdgDatabase, const U* candidate = nullptr)
 {
   for (auto& particle : particles) {
     if (particleSelection == "PhysicalPrimary" && !particle.isPhysicalPrimary()) { // CHECK : Does this exclude the HF hadron?
@@ -374,20 +381,26 @@ void analyseParticles(std::vector<fastjet::PseudoJet>& inputParticles, std::stri
         }
       }
     }
+    bool isSelected = true;
     if constexpr (jetv0utilities::isV0McTable<U>()) { // note that for V0s the candidate table is given to this function, not a single candidate
       if (candidate != nullptr) {
         for (auto const& cand : (*candidate)) {
           if (cand.mcParticleId() == particle.globalIndex()) {
-            continue;
+            isSelected = false;
+            break;
           }
           auto v0Particle = cand.template mcParticle_as<T>();
           if (jetcandidateutilities::isDaughterParticle(v0Particle, particle.globalIndex())) {
-            continue;
+            isSelected = false;
+            break;
           }
         }
       }
     }
-    fastjetutilities::fillTracks(particle, inputParticles, particle.globalIndex(), static_cast<int>(JetConstituentStatus::track), pdgParticle->Mass());
+    if (!isSelected) {
+      continue;
+    }
+    fastjetutilities::fillTracks(particle, inputParticles, particle.globalIndex(), JetConstituentStatus::track, pdgParticle->Mass());
   }
 }
 

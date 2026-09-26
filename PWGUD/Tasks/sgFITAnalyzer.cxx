@@ -13,18 +13,31 @@
 // \author Sasha Bylinkin, alexander.bylinkin@gmail.com
 // \since  April 2023
 
-#include "Framework/runDataProcessing.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/O2DatabasePDGPlugin.h"
-
-#include "TVector3.h"
-#include "TTree.h"
-#include "TFile.h"
-#include "Common/DataModel/PIDResponse.h"
-#include "PWGUD/DataModel/UDTables.h"
-#include "PWGUD/Core/UDHelpers.h"
 #include "PWGUD/Core/SGSelector.h"
 #include "PWGUD/Core/SGTrackSelector.h"
+#include "PWGUD/DataModel/UDTables.h"
+
+#include <CommonConstants/LHCConstants.h>
+#include <Framework/ASoA.h>
+#include <Framework/AnalysisHelpers.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/O2DatabasePDGPlugin.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TH2.h>
+#include <TMathBase.h>
+#include <TTree.h>
+#include <TVector3.h>
+
+#include <Rtypes.h>
+
+#include <cstdint>
+#include <cstdlib>
+#include <vector>
 
 using namespace o2;
 using namespace o2::framework;
@@ -398,7 +411,7 @@ struct SGFITAnalyzer {
     std::vector<TLorentzVector> goodTracks;
     std::vector<TLorentzVector> muonTracks;
     float sign = 0;
-    for (auto t : dgtracks) {
+    for (const auto& t : dgtracks) {
       TLorentzVector a;
       TLorentzVector b;
       a.SetXYZM(t.px(), t.py(), t.pz(), mpion);
@@ -411,13 +424,13 @@ struct SGFITAnalyzer {
       }
     }
     if (goodTracks.size() == 2) {
-      for (auto pion : goodTracks) {
+      for (const auto& pion : goodTracks) {
         rho += pion;
       }
       if (sign == 0 && TMath::Abs(rho.Rapidity()) < .9 && rho.M() > .5 && rho.M() < 1.2 && rho.Pt() < 0.1)
         coh_rho0 = true;
       if (muonTracks.size() == 2) {
-        for (auto muon : muonTracks) {
+        for (const auto& muon : muonTracks) {
           jpsi += muon;
         }
         if (sign == 0 && TMath::Abs(jpsi.Rapidity()) < .9 && jpsi.M() > 2.8 && jpsi.M() < 3.35 && jpsi.Pt() < 0.1)
@@ -724,7 +737,7 @@ struct SGFITAnalyzer {
       registry.get<TH2>(HIST("ZDC/MACZNA"))->Fill(PVContributors.size(), zna);
       registry.get<TH2>(HIST("ZDC/MACZNC"))->Fill(PVContributors.size(), znc);
     }
-    for (auto track : dgtracks) {
+    for (const auto& track : dgtracks) {
       registry.get<TH1>(HIST("tracks/QCAll"))->Fill(0., 1.);
       registry.get<TH1>(HIST("tracks/QCAll"))->Fill(1., track.hasITS() * 1.);
       registry.get<TH1>(HIST("tracks/QCAll"))->Fill(2., track.hasTPC() * 1.);

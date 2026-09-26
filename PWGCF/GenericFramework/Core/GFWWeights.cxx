@@ -10,7 +10,21 @@
 // or submit itself to any jurisdiction.
 
 #include "GFWWeights.h"
-#include "TMath.h"
+
+#include <Framework/Logger.h>
+
+#include <TCollection.h>
+#include <TFile.h>
+#include <TH1.h>
+#include <TH3.h>
+#include <TList.h>
+#include <TMath.h>
+#include <TNamed.h>
+#include <TObjArray.h>
+#include <TString.h>
+
+#include <RtypesCore.h>
+
 #include <cstdio>
 
 GFWWeights::GFWWeights() : TNamed("", ""),
@@ -283,7 +297,7 @@ void GFWWeights::createNUE(bool IntegrateOverCentrality)
     return;
   }
 };
-void GFWWeights::readAndMerge(TString filelinks, TString listName, bool addData, bool addRec, bool addGen)
+void GFWWeights::readAndMerge(const TString& filelinks, const TString& listName, bool addData, bool addRec, bool addGen)
 {
   FILE* flist = fopen(filelinks.Data(), "r");
   char str[150];

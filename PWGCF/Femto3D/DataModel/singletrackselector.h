@@ -16,17 +16,19 @@
 #ifndef PWGCF_FEMTO3D_DATAMODEL_SINGLETRACKSELECTOR_H_
 #define PWGCF_FEMTO3D_DATAMODEL_SINGLETRACKSELECTOR_H_
 
-// #include <experimental/type_traits>
-#include <utility>
-#include <vector>
-
-#include "Framework/ASoA.h"
-#include "Framework/AnalysisDataModel.h"
-#include "Common/DataModel/PIDResponse.h"
+#include "Common/CCDB/EventSelectionParams.h"
+#include "Common/DataModel/EventSelection.h"
 #include "Common/DataModel/PIDResponseITS.h"
-#include "Framework/Logger.h"
-#include "Common/DataModel/Multiplicity.h"
-#include "PWGCF/Femto3D/DataModel/PIDutils.h"
+
+#include <Framework/ASoA.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/Logger.h>
+
+#include <Rtypes.h>
+
+#include <cmath>
+#include <cstdint>
+#include <utility>
 
 namespace o2::aod
 {
@@ -135,7 +137,7 @@ DECLARE_SOA_DYNAMIC_COLUMN(dIsGoodZvtxFT0vsPV, isGoodZvtxFT0vsPV, [](uint64_t se
 DECLARE_SOA_DYNAMIC_COLUMN(dIsVertexITSTPC, isVertexITSTPC, [](uint64_t selBit) -> bool { return TESTBIT(selBit, evsel::kIsVertexITSTPC); });
 DECLARE_SOA_DYNAMIC_COLUMN(dIsVertexTOForTRDmatched, isVertexTOForTRDmatched, [](uint64_t selBit) -> int { return static_cast<int>(TESTBIT(selBit, evsel::kIsVertexTOFmatched)) + static_cast<int>(TESTBIT(selBit, evsel::kIsVertexTRDmatched)); });
 DECLARE_SOA_DYNAMIC_COLUMN(dNoCollInTimeRangeStandard, noCollInTimeRangeStandard, [](uint64_t selBit) -> bool { return TESTBIT(selBit, evsel::kNoCollInTimeRangeStandard); });
-
+DECLARE_SOA_DYNAMIC_COLUMN(dIsGoodITSLayersAll, isGoodITSLayersAll, [](uint64_t selBit) -> bool { return TESTBIT(selBit, evsel::kIsGoodITSLayersAll); });
 } // namespace singletrackselector
 
 DECLARE_SOA_TABLE(SingleCollSels, "AOD", "SINGLECOLLSEL", // Table of the variables for single track selection.
@@ -154,7 +156,8 @@ DECLARE_SOA_TABLE(SingleCollExtras_v1, "AOD", "SINGLECOLLEXTR1", // Joinable col
                   singletrackselector::dIsGoodZvtxFT0vsPV<evsel::Selection>,
                   singletrackselector::dIsVertexITSTPC<evsel::Selection>,
                   singletrackselector::dIsVertexTOForTRDmatched<evsel::Selection>,
-                  singletrackselector::dNoCollInTimeRangeStandard<evsel::Selection>);
+                  singletrackselector::dNoCollInTimeRangeStandard<evsel::Selection>,
+                  singletrackselector::dIsGoodITSLayersAll<evsel::Selection>);
 
 using SingleCollExtras = SingleCollExtras_v1;
 

@@ -14,39 +14,29 @@
 /// \file jetTriggerChargedQa.cxx
 /// \brief QA of trigger performance for charged jets
 
+#include "PWGJE/Core/JetDerivedDataUtilities.h"
+#include "PWGJE/DataModel/Jet.h"
+#include "PWGJE/DataModel/JetReducedData.h"
+
+#include <CommonConstants/MathConstants.h>
+#include <Framework/ASoA.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/runDataProcessing.h>
+
 #include <cmath>
 #include <string>
 #include <vector>
-#include <TMath.h>
-#include <TVector2.h>
-
-#include "Framework/ASoA.h"
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/runDataProcessing.h"
-
-#include "EventFiltering/filterTables.h"
-
-#include "CommonConstants/MathConstants.h"
-#include "Common/Core/TrackSelection.h"
-#include "Common/Core/TrackSelectionDefaults.h"
-#include "Common/DataModel/EventSelection.h"
-#include "Common/DataModel/TrackSelectionTables.h"
-
-#include "PWGJE/Core/JetFinder.h"
-#include "PWGJE/Core/FastJetUtilities.h"
-#include "PWGJE/Core/JetFindingUtilities.h"
-#include "PWGJE/Core/JetDerivedDataUtilities.h"
-#include "PWGJE/DataModel/EMCALClusters.h"
-#include "PWGJE/DataModel/Jet.h"
-
-#include "Framework/HistogramRegistry.h"
 
 using namespace o2;
 using namespace o2::framework;
 using namespace o2::framework::expressions;
 
-using FilteredColl = soa::Filtered<soa::Join<aod::JetCollisions, aod::JChTrigSels, aod::EvSels>>::iterator;
+using FilteredColl = soa::Filtered<soa::Join<aod::JetCollisions, aod::JChTrigSels>>::iterator;
 using FilteredJTracks = soa::Filtered<soa::Join<aod::JTracks, aod::JTrackPIs, aod::JTrackExtras>>;
 using FilteredJets = soa::Filtered<soa::Join<aod::ChargedJets, aod::ChargedJetConstituents>>;
 using JoinedTracks = soa::Join<aod::Tracks, aod::TracksExtra>;
@@ -169,7 +159,7 @@ struct JetTriggerChargedQa {
   void process(FilteredColl const& collision, FilteredJTracks const& tracks, FilteredJets const& jets, JoinedTracks const&)
   {
 
-    if (!collision.selection_bit(aod::evsel::kNoTimeFrameBorder)) {
+    if (!jetderiveddatautilities::selectCollision(collision, jetderiveddatautilities::initialiseEventSelectionBits(static_cast<std::string>("NoTimeFrameBorder")))) {
       return;
     }
 

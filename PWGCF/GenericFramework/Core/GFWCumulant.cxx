@@ -9,15 +9,12 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-/*
-Author: Vytautas Vislavicius
-Extention of Generic Flow (https://arxiv.org/abs/1312.3572 by A. Bilandzic et al.)
-A part of <GFW.cxx/h>
-A container to store Q vectors for one subevent with an extra layer to recursively calculate particle correlations.
-If used, modified, or distributed, please aknowledge the author of this code.
-*/
-
 #include "GFWCumulant.h"
+
+#include <cmath>
+#include <complex>
+#include <utility>
+#include <vector>
 
 using std::complex;
 using std::vector;
@@ -107,7 +104,7 @@ void GFWCumulant::CreateComplexVectorArrayVarPower(int N, vector<int> PowVec, in
   fPow = 0;
   fPt = Pt;
   fFilledPts = new bool[Pt];
-  fPowVec = PowVec;
+  fPowVec = std::move(PowVec);
   fQvector = new complex<double>**[fPt];
   for (int i = 0; i < fPt; i++) {
     fQvector[i] = new complex<double>*[fN];

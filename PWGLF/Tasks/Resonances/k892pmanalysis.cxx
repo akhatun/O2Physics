@@ -15,17 +15,23 @@
 ///
 /// \author Bong-Hwi Lim <bong-hwi.lim@cern.ch>, Alessandro Sturniolo <a.sturniolo@cern.ch>
 
-#include <TLorentzVector.h>
-
-#include "Common/DataModel/PIDResponse.h"
-#include "Common/DataModel/Centrality.h"
-#include "Common/DataModel/EventSelection.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/ASoAHelpers.h"
-#include "Framework/runDataProcessing.h"
 #include "PWGLF/DataModel/LFResonanceTables.h"
-#include "DataFormatsParameters/GRPObject.h"
-#include "CommonConstants/PhysicsConstants.h"
+
+#include <CommonConstants/PhysicsConstants.h>
+#include <Framework/ASoA.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/BinningPolicy.h>
+#include <Framework/Configurable.h>
+#include <Framework/GroupedCombinations.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/SliceCache.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TLorentzVector.h>
 
 using namespace o2;
 using namespace o2::framework;
@@ -191,7 +197,7 @@ struct k892pmanalysis {
   double massAntiLambda0 = MassLambda0Bar;
 
   template <typename TrackType>
-  bool trackCut(const TrackType track)
+  bool trackCut(const TrackType& track)
   {
     // basic track cuts
     if (std::abs(track.pt()) < cMinPtcut)
@@ -213,7 +219,7 @@ struct k892pmanalysis {
   }
 
   template <typename V0Type>
-  bool V0Cut(const V0Type v0)
+  bool V0Cut(const V0Type& v0)
   {
     // V0 track cuts
     if (std::abs(v0.eta()) > cMaxV0Etacut)
@@ -443,7 +449,7 @@ struct k892pmanalysis {
 
   void processMCTrue(aod::ResoMCParents& resoParents)
   {
-    for (auto& part : resoParents) {  // loop over all pre-filtered MC particles
+    for (auto& part : resoParents) {       // loop over all pre-filtered MC particles
       if (std::abs(part.pdgCode()) != 323) // K*892(pm)
         continue;
       if (std::abs(part.y()) > 0.5) // rapidity cut

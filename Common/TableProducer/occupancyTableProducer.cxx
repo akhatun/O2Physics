@@ -15,31 +15,35 @@
 ///         Ambg tracks were not used
 /// \author Rahul Verma (rahul.verma@iitb.ac.in) :: Marian I Ivanov (marian.ivanov@cern.ch)
 
-#include <vector>
-#include <unordered_map>
-#include <algorithm>
-#include <cmath>
-#include <string>
-
-#include "Framework/runDataProcessing.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/O2DatabasePDGPlugin.h"
-
-#include "Common/DataModel/TrackSelectionTables.h"
-#include "Common/DataModel/PIDResponse.h"
-#include "Common/DataModel/EventSelection.h"
-#include "Common/DataModel/Centrality.h"
 #include "Common/DataModel/Multiplicity.h"
-
-#include "PWGLF/DataModel/LFStrangenessTables.h"
-
 #include "Common/DataModel/OccupancyTables.h"
 
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/HistogramRegistry.h"
-#include "CCDB/BasicCCDBManager.h"
-#include "DataFormatsFT0/Digit.h"
-#include "DataFormatsParameters/GRPLHCIFData.h"
+#include <CCDB/BasicCCDBManager.h>
+#include <CommonConstants/LHCConstants.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisHelpers.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TMath.h>
+
+#include <sys/types.h>
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <vector>
 
 using namespace o2;
 using namespace o2::framework;
@@ -51,6 +55,24 @@ int32_t nBCsPerOrbit = o2::constants::lhc::LHCMaxBunches;
 // for 128 => nBCsPerTF = 456192 , for 32 => nBCsPerTF = 114048
 // const int nBCinTF = 114048;         /// CCDB value // to be obtained from CCDB in future
 const int nBCinDrift = 114048 / 32; /// to get from ccdb in future
+
+template <typename T, std::size_t N>
+void sortVectorOfArray(std::vector<std::array<T, N>>& myVector, const int& myIDX)
+{
+  std::sort(myVector.begin(), myVector.end(), [myIDX](const std::array<T, N>& a, const std::array<T, N>& b) {
+    return a[myIDX] < b[myIDX]; // sort at the required index
+  });
+}
+
+template <typename T, std::size_t N>
+void checkUniqueness(const std::vector<std::array<T, N>>& myVector, const int& myIDX)
+{
+  for (size_t i = 1; i < myVector.size(); i++) {
+    if (myVector[i][myIDX] <= myVector[i - 1][myIDX]) {
+      LOG(error) << "Duplicate Entries while creating Index tables :: (vec[" << i << "][" << myIDX << "]) " << myVector[i][myIDX] << " >= " << myVector[i - 1][myIDX] << " (vec[" << i - 1 << "][" << myIDX << "])";
+    }
+  }
+}
 
 struct OccupancyTableProducer {
 
@@ -411,51 +433,43 @@ struct OccupancyTableProducer {
   template <int processMode, int tableMode, int meanTableMode, int robustTableMode, int meanRobustTableMode, typename B, typename C, typename T>
   void executeOccProducerProcessing(B const& BCs, C const& collisions, T const& tracks)
   {
-    if (tableMode == checkTableMode) {
+    if constexpr (tableMode == checkTableMode) {
       if (buildFlag00OccTable) {
         executeOccProducerProcessing<processMode, fillOccTable, meanTableMode, robustTableMode, meanRobustTableMode>(BCs, collisions, tracks);
       } else {
         executeOccProducerProcessing<processMode, doNotFill, meanTableMode, robustTableMode, meanRobustTableMode>(BCs, collisions, tracks);
       }
-    }
-    if constexpr (tableMode == checkTableMode) {
       return;
     }
 
-    if (meanTableMode == checkTableMode) {
+    if constexpr (meanTableMode == checkTableMode) {
       if (buildFlag01OccMeanTable) {
         executeOccProducerProcessing<processMode, tableMode, fillMeanOccTable, robustTableMode, meanRobustTableMode>(BCs, collisions, tracks);
       } else {
         executeOccProducerProcessing<processMode, tableMode, doNotFill, robustTableMode, meanRobustTableMode>(BCs, collisions, tracks);
       }
-    }
-    if constexpr (meanTableMode == checkTableMode) {
       return;
     }
 
-    if (robustTableMode == checkTableMode) {
+    if constexpr (robustTableMode == checkTableMode) {
       if (buildFlag02OccRobustTable) {
         executeOccProducerProcessing<processMode, tableMode, meanTableMode, fillOccRobustTable, meanRobustTableMode>(BCs, collisions, tracks);
       } else {
         executeOccProducerProcessing<processMode, tableMode, meanTableMode, doNotFill, meanRobustTableMode>(BCs, collisions, tracks);
       }
-    }
-    if constexpr (robustTableMode == checkTableMode) {
       return;
     }
 
-    if (meanRobustTableMode == checkTableMode) {
+    if constexpr (meanRobustTableMode == checkTableMode) {
       if (buildFlag03OccMeanRobustTable) {
         executeOccProducerProcessing<processMode, tableMode, meanTableMode, robustTableMode, fillOccMeanRobustTable>(BCs, collisions, tracks);
       } else {
         executeOccProducerProcessing<processMode, tableMode, meanTableMode, robustTableMode, doNotFill>(BCs, collisions, tracks);
       }
-    }
-    if constexpr (meanRobustTableMode == checkTableMode) {
       return;
     }
 
-    if constexpr (tableMode == checkTableMode || meanTableMode == checkTableMode || robustTableMode == checkTableMode || meanRobustTableMode == checkTableMode) {
+    if constexpr (tableMode == checkTableMode || meanTableMode == checkTableMode || robustTableMode == checkTableMode) {
       return;
     } else {
 
@@ -780,7 +794,7 @@ struct OccupancyTableProducer {
 
         auto& vecOccPrimUnfm80 = occPrimUnfm80[i];
         float meanOccPrimUnfm80 = TMath::Mean(vecOccPrimUnfm80.size(), vecOccPrimUnfm80.data());
-        normalizeVector(vecOccPrimUnfm80, meanOccPrimUnfm80 / meanOccPrimUnfm80);
+        // normalizeVector(vecOccPrimUnfm80, meanOccPrimUnfm80 / meanOccPrimUnfm80);
 
         if constexpr (processMode == kProcessFullOccTableProducer || processMode == kProcessOnlyOccPrim || processMode == kProcessOnlyOccT0V0Prim || processMode == kProcessOnlyOccFDDT0V0Prim || processMode == kProcessOnlyOccNtrackDet || processMode == kProcessOnlyOccMultExtra) {
           if constexpr (tableMode == fillOccTable) {
@@ -1208,7 +1222,9 @@ struct OccupancyTableProducer {
 struct TrackMeanOccTableProducer {
 
   // //declare production of tables
-  Produces<aod::TmoTrackId> genTmoTrackId;
+  Produces<aod::TmoTrackIds> genTmoTrackId;
+  Produces<aod::TmoToTrackQA> genTmoToTrackQA;
+  Produces<aod::TrackQAToTmo> genTrackQAToTmo;
 
   Produces<aod::TmoPrim> genTmoPrim;
   Produces<aod::TmoT0V0> genTmoT0V0;
@@ -1261,6 +1277,9 @@ struct TrackMeanOccTableProducer {
 
   Configurable<bool> fillQA1{"fillQA1", true, "fill QA LOG Ratios"};
   Configurable<bool> fillQA2{"fillQA2", true, "fill QA condition dependent QAs"};
+
+  Configurable<bool> buildPointerTrackQAToTMOTable{"buildPointerTrackQAToTMOTable", true, "buildPointerTrackQAToTMOTable"};
+  Configurable<bool> buildPointerTMOToTrackQATable{"buildPointerTMOToTrackQATable", true, "buildPointerTMOToTrackQATable"};
 
   // vectors to be used for occupancy estimation
   std::vector<float> occPrimUnfm80;
@@ -1672,20 +1691,22 @@ struct TrackMeanOccTableProducer {
   {
     occupancyQA.fill(HIST("occTrackQA/") + HIST(OccDire[occMode]) + HIST(OccNames[occName]), occValue);
     if (fillQA1) {
-      occupancyQA.fill(HIST("occTrackQA/LogRatio/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), std::log(std::abs(occValue / occRobustValue)));
+      float logRatio = std::log(occValue / occRobustValue);
+      float weighted = logRatio * std::sqrt(occValue + occRobustValue);
+      occupancyQA.fill(HIST("occTrackQA/LogRatio/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), logRatio);
       if (fillQA2) {
         int two = 2, twenty = 20, fifty = 50, twoHundred = 200;
         if (std::abs(std::log(occValue / occRobustValue)) < two) { // conditional filling start
-          occupancyQA.fill(HIST("occTrackQA/Condition1/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), (std::log(occValue / occRobustValue)) * std::sqrt(occValue + occRobustValue));
+          occupancyQA.fill(HIST("occTrackQA/Condition1/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), weighted);
           if (std::abs(occRobustValue + occValue) > twoHundred) {
-            occupancyQA.fill(HIST("occTrackQA/Condition4/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), (std::log(occValue / occRobustValue)) * std::sqrt(occValue + occRobustValue));
-            occupancyQA.fill(HIST("occTrackQA/Condition3/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), (std::log(occValue / occRobustValue)) * std::sqrt(occValue + occRobustValue));
-            occupancyQA.fill(HIST("occTrackQA/Condition2/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), (std::log(occValue / occRobustValue)) * std::sqrt(occValue + occRobustValue));
+            occupancyQA.fill(HIST("occTrackQA/Condition4/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), weighted);
+            occupancyQA.fill(HIST("occTrackQA/Condition3/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), weighted);
+            occupancyQA.fill(HIST("occTrackQA/Condition2/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), weighted);
           } else if (std::abs(occRobustValue + occValue) > fifty) {
-            occupancyQA.fill(HIST("occTrackQA/Condition3/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), (std::log(occValue / occRobustValue)) * std::sqrt(occValue + occRobustValue));
-            occupancyQA.fill(HIST("occTrackQA/Condition2/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), (std::log(occValue / occRobustValue)) * std::sqrt(occValue + occRobustValue));
+            occupancyQA.fill(HIST("occTrackQA/Condition3/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), weighted);
+            occupancyQA.fill(HIST("occTrackQA/Condition2/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), weighted);
           } else if (std::abs(occRobustValue + occValue) > twenty) {
-            occupancyQA.fill(HIST("occTrackQA/Condition2/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), (std::log(occValue / occRobustValue)) * std::sqrt(occValue + occRobustValue));
+            occupancyQA.fill(HIST("occTrackQA/Condition2/") + HIST(OccDire[occRobustMode]) + HIST(OccDire[occMode]) + HIST(OccNames[occName]), weighted);
           }
         } // conditional filling end
       }
@@ -1727,6 +1748,7 @@ struct TrackMeanOccTableProducer {
     fillWeightMeanOccTable
   };
 
+  std::vector<std::array<int64_t, 2>> trackQAGIListforTMOList;
   template <int processMode, int meanTableMode, int weightMeanTableMode, int qaMode, typename B, typename C, typename T, typename U, typename O, typename V>
   void executeTrackOccProducerProcessing(B const& BCs, C const& collisions, T const& tracks, U const& tracksQA, O const& occsRobustT0V0Prim, V const& occs, bool const& executeInThisBlock)
   {
@@ -1734,29 +1756,25 @@ struct TrackMeanOccTableProducer {
       return;
     }
 
-    if (meanTableMode == checkTableMode) {
+    if constexpr (meanTableMode == checkTableMode) {
       if (buildFlag00MeanTable) {
         executeTrackOccProducerProcessing<processMode, fillMeanOccTable, weightMeanTableMode, qaMode>(BCs, collisions, tracks, tracksQA, occsRobustT0V0Prim, occs, executeInThisBlock);
       } else {
         executeTrackOccProducerProcessing<processMode, doNotFill, weightMeanTableMode, qaMode>(BCs, collisions, tracks, tracksQA, occsRobustT0V0Prim, occs, executeInThisBlock);
       }
-    }
-    if constexpr (meanTableMode == checkTableMode) {
       return;
     }
 
-    if (weightMeanTableMode == checkTableMode) {
+    if constexpr (weightMeanTableMode == checkTableMode) {
       if (buildFlag01WeightMeanTable) {
         executeTrackOccProducerProcessing<processMode, meanTableMode, fillWeightMeanOccTable, qaMode>(BCs, collisions, tracks, tracksQA, occsRobustT0V0Prim, occs, executeInThisBlock);
       } else {
         executeTrackOccProducerProcessing<processMode, meanTableMode, doNotFill, qaMode>(BCs, collisions, tracks, tracksQA, occsRobustT0V0Prim, occs, executeInThisBlock);
       }
-    }
-    if constexpr (weightMeanTableMode == checkTableMode) {
       return;
     }
 
-    if (qaMode == checkQAMode) {
+    if constexpr (qaMode == checkQAMode) {
       if (fillQA1 || fillQA2) {
         if (occsRobustT0V0Prim.size() == 0) {
           LOG(error) << "DEBUG :: ERROR ERROR ERROR :: OccsRobustT0V0Prim.size() == 0 :: Check \"occupancy-table-producer\" for \"buildOnlyOccsT0V0Prim == true\" & \"processOnlyOccT0V0PrimUnfm == true\"";
@@ -1766,8 +1784,6 @@ struct TrackMeanOccTableProducer {
       } else {
         executeTrackOccProducerProcessing<processMode, meanTableMode, weightMeanTableMode, doNotFill>(BCs, collisions, tracks, tracksQA, occsRobustT0V0Prim, occs, executeInThisBlock);
       }
-    }
-    if constexpr (qaMode == checkQAMode) {
       return;
     }
 
@@ -1775,7 +1791,7 @@ struct TrackMeanOccTableProducer {
     // BCs.bindExternalIndices(&occsNTrackDet);
     // BCs.bindExternalIndices(&occsRobust);
 
-    if constexpr (meanTableMode == checkTableMode || weightMeanTableMode == checkTableMode || qaMode == checkQAMode) {
+    if constexpr (meanTableMode == checkTableMode || weightMeanTableMode == checkTableMode) {
       return;
     } else {
       occupancyQA.fill(HIST("h_DFcount_Lvl2"), processMode);
@@ -1871,6 +1887,9 @@ struct TrackMeanOccTableProducer {
       float weightMeanOccRobustNtrackDetUnfm80 = 0;
       float weightMeanOccRobustMultTableUnfm80 = 0;
 
+      int trackTMOcounter = -1;
+      trackQAGIListforTMOList.clear();
+
       for (const auto& trackQA : tracksQA) {
         auto const& track = trackQA.template track_as<T>();
         auto collision = collisions.begin();
@@ -1927,16 +1946,16 @@ struct TrackMeanOccTableProducer {
         if (doAmbgUpdate) { // sKipping ambiguous tracks for now, will be updated in future
           continue;
         }
-        if (doCollisionUpdate || doAmbgUpdate) { // collision.globalIndex() != oldCollisionIndex){ //don't update if info is same as old collision
+        if (doCollisionUpdate) { // collision.globalIndex() != oldCollisionIndex){ //don't update if info is same as old collision
           if (doCollisionUpdate) {
             oldCollisionIndex = collision.globalIndex();
             bc = collision.template bc_as<B>();
           }
-          if (doAmbgUpdate) {
-            // to be updated later
-            //  bc = collisions.iteratorAt(2).bc_as<aod::BCsWithTimestamps>();
-            //  bc = ambgTracks.iteratorAt(0).bc_as<aod::BCsWithTimestamps>();
-          }
+          // if (doAmbgUpdate) {
+          // to be updated later
+          //  bc = collisions.iteratorAt(2).bc_as<aod::BCsWithTimestamps>();
+          //  bc = ambgTracks.iteratorAt(0).bc_as<aod::BCsWithTimestamps>();
+          // }
           // LOG(info)<<" What happens in the case when the collision id is = -1 and it tries to obtain bc"
           getTimingInfo(bc, lastRun, nBCsPerTF, bcSOR, time, tfIdThis, bcInTF);
         }
@@ -2034,7 +2053,9 @@ struct TrackMeanOccTableProducer {
 
         // If multiple process are on, fill this table only once
         if (executeInThisBlock) {
+          trackTMOcounter++;
           genTmoTrackId(track.globalIndex());
+          trackQAGIListforTMOList.push_back({trackQA.globalIndex(), trackTMOcounter});
         }
 
         if constexpr (qaMode == fillOccRobustT0V0dependentQA) {
@@ -2320,6 +2341,52 @@ struct TrackMeanOccTableProducer {
           }
         }
       } // end of trackQA loop
+
+      // build the IndexTables here
+      if (executeInThisBlock) {
+        if (buildPointerTrackQAToTMOTable) {
+          // create pointer table from trackQA to TrackMeanOcc
+          sortVectorOfArray(trackQAGIListforTMOList, 0); // sort the list //Its easy to search in a sorted list
+          checkUniqueness(trackQAGIListforTMOList, 0);   // check the uniqueness of track.globalIndex()
+
+          int currentIDXforCheck = 0;
+          int listSize = trackQAGIListforTMOList.size();
+          for (const auto& trackQA : tracksQA) {
+            while (trackQA.globalIndex() > trackQAGIListforTMOList[currentIDXforCheck][0]) {
+              currentIDXforCheck++; // increment the currentIDXforCheck for missing or invalid cases e.g. value = -1;
+              if (currentIDXforCheck >= listSize) {
+                break;
+              }
+            }
+            if (trackQA.globalIndex() == trackQAGIListforTMOList[currentIDXforCheck][0]) {
+              genTrackQAToTmo(trackQAGIListforTMOList[currentIDXforCheck][1]);
+            } else {
+              genTrackQAToTmo(-1); // put a dummy index when track is not found in trackQA
+            }
+          }
+        }
+        if (buildPointerTMOToTrackQATable) {
+          // create pointer table from TrackMeanOcc to trackQA
+          sortVectorOfArray(trackQAGIListforTMOList, 1); // sort the list //Its easy to search in a sorted list
+          checkUniqueness(trackQAGIListforTMOList, 1);   // check the uniqueness of track.globalIndex()
+
+          int currentIDXforCheck = 0;
+          int listSize = trackQAGIListforTMOList.size();
+          for (int iCounter = 0; iCounter <= trackTMOcounter; iCounter++) {
+            while (iCounter > trackQAGIListforTMOList[currentIDXforCheck][1]) {
+              currentIDXforCheck++; // increment the currentIDXforCheck for missing or invalid cases e.g. value = -1;
+              if (currentIDXforCheck >= listSize) {
+                break;
+              }
+            }
+            if (iCounter == trackQAGIListforTMOList[currentIDXforCheck][1]) {
+              genTmoToTrackQA(trackQAGIListforTMOList[currentIDXforCheck][0]);
+            } else {
+              genTmoToTrackQA(-1); // put a dummy index when track is not found in trackQA
+            }
+          }
+        }
+      } // end of executeInThisBlock
     } // end of else block of constexpr
   }
 
@@ -2342,7 +2409,6 @@ struct TrackMeanOccTableProducer {
   {
     occupancyQA.fill(HIST("h_DFcount_Lvl0"), kProcessNothing);
     return;
-    occupancyQA.fill(HIST("h_DFcount_Lvl1"), kProcessNothing);
   }
   PROCESS_SWITCH(TrackMeanOccTableProducer, processNothing, "process Nothing From Track Mean Occ Table Producer", true);
 
@@ -2602,9 +2668,92 @@ struct TrackMeanOccTableProducer {
   PROCESS_SWITCH(TrackMeanOccTableProducer, processFullOccTableProduer, "processFullOccTableProduer", false);
 };
 
+struct CreatePointerTables {
+
+  Produces<aod::TrackToTracksQA> genTrackToTracksQA;
+  Produces<aod::TrackToTmo> genTrackToTmo;
+
+  void processNothing(aod::Collisions const&)
+  {
+    return;
+  }
+  PROCESS_SWITCH(CreatePointerTables, processNothing, "process Nothing", true);
+
+  std::vector<std::array<int64_t, 2>> trackGIForTrackQAIndexList;
+  using MyTracksQA = aod::TracksQAVersion;
+  void processTrackToTrackQAPointer(aod::Tracks const& tracks, MyTracksQA const& tracksQA)
+  {
+    trackGIForTrackQAIndexList.clear();
+    for (const auto& trackQA : tracksQA) {
+      auto const& track = trackQA.template track_as<aod::Tracks>();
+      trackGIForTrackQAIndexList.push_back({track.globalIndex(), trackQA.globalIndex()});
+    }
+
+    sortVectorOfArray(trackGIForTrackQAIndexList, 0); // sort the list //Its easy to search in a sorted list
+    checkUniqueness(trackGIForTrackQAIndexList, 0);   // check the uniqueness of track.globalIndex()
+
+    // create pointer table
+    int currentIDXforCheck = 0;
+    int listSize = trackGIForTrackQAIndexList.size();
+    bool breakOnOverflow = false;
+
+    for (const auto& track : tracks) {
+      while (!breakOnOverflow && track.globalIndex() > trackGIForTrackQAIndexList[currentIDXforCheck][0]) {
+        currentIDXforCheck++; // increment the currentIDXforCheck for missing or invalid cases e.g. value = -1;
+        if (currentIDXforCheck >= listSize) {
+          breakOnOverflow = true;
+          break;
+        }
+      }
+      if (!breakOnOverflow && track.globalIndex() == trackGIForTrackQAIndexList[currentIDXforCheck][0]) {
+        genTrackToTracksQA(trackGIForTrackQAIndexList[currentIDXforCheck][1]);
+      } else {
+        genTrackToTracksQA(-1); // put a dummy index when track is not found in trackQA
+      }
+    }
+  }
+  PROCESS_SWITCH(CreatePointerTables, processTrackToTrackQAPointer, "processTrackToTrackQAPointer", false);
+
+  std::vector<std::array<int64_t, 2>> trackGIForTMOIndexList;
+  void processTrackToTrackMeanOccsPointer(aod::Tracks const& tracks, aod::TmoTrackIds const& tmoTrackIds)
+  {
+    trackGIForTMOIndexList.clear();
+    int tmoCounter = -1;
+    for (const auto& tmoTrackId : tmoTrackIds) {
+      tmoCounter++;
+      auto const& track = tmoTrackId.template track_as<aod::Tracks>();
+      trackGIForTMOIndexList.push_back({track.globalIndex(), tmoCounter}); // tmoTrackId Global Index is not working :: tmoTrackId.globalIndex()});
+    }
+    sortVectorOfArray(trackGIForTMOIndexList, 0); // sort the list //Its easy to search in a sorted list
+    checkUniqueness(trackGIForTMOIndexList, 0);   // check the uniqueness of track.globalIndex()
+
+    // create pointer table
+    int currentIDXforCheck = 0;
+    int listSize = trackGIForTMOIndexList.size();
+    bool breakOnOverflow = false;
+
+    for (const auto& track : tracks) {
+      while (!breakOnOverflow && track.globalIndex() > trackGIForTMOIndexList[currentIDXforCheck][0]) {
+        currentIDXforCheck++; // increment the currentIDXforCheck for missing or invalid cases e.g. value = -1;
+        if (currentIDXforCheck >= listSize) {
+          breakOnOverflow = true;
+          break;
+        }
+      }
+      if (!breakOnOverflow && track.globalIndex() == trackGIForTMOIndexList[currentIDXforCheck][0]) {
+        genTrackToTmo(trackGIForTMOIndexList[currentIDXforCheck][1]);
+      } else {
+        genTrackToTmo(-1); // put a dummy index when track is not found in trackQA
+      }
+    }
+  }
+  PROCESS_SWITCH(CreatePointerTables, processTrackToTrackMeanOccsPointer, "processTrackToTrackMeanOccsPointer", false);
+};
+
 WorkflowSpec defineDataProcessing(ConfigContext const& cfgc)
 {
   return WorkflowSpec{
     adaptAnalysisTask<OccupancyTableProducer>(cfgc),
-    adaptAnalysisTask<TrackMeanOccTableProducer>(cfgc)};
+    adaptAnalysisTask<TrackMeanOccTableProducer>(cfgc),
+    adaptAnalysisTask<CreatePointerTables>(cfgc)};
 }

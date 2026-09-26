@@ -8,21 +8,21 @@
 // In applying this license CERN does not waive the privileges and immunities
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
-///
+
 /// \file mcGeneratorStudies.cxx
-///
 /// \brief Task that produces the generated pT spectrum of a given particle for MC studies based on on the fly MC simulations
-///
 /// \author Nicolas Strangmann (nicolas.strangmann@cern.ch) - Goethe University Frankfurt
-///
 
-#include "Framework/runDataProcessing.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/ASoA.h"
-#include "Framework/HistogramRegistry.h"
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/Expressions.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/runDataProcessing.h>
 
-#include "TDatabasePDG.h"
+#include <cstdlib>
 
 using namespace o2;
 using namespace o2::framework;
@@ -46,10 +46,11 @@ struct MCGeneratorStudies {
     int nParticles = mcParticles.size();
     mHistManager.fill(HIST("Multiplicity"), nParticles);
     for (auto& mcParticle : mcParticles) {
-      if (mcParticle.pdgCode() == cfgSelectedParticleCode && std::abs(mcParticle.y()) < cfgRapidityCut)
+      if (mcParticle.pdgCode() == cfgSelectedParticleCode && std::abs(mcParticle.y()) < cfgRapidityCut) {
         mHistManager.fill(HIST("YieldVsMultiplicity"), mcParticle.pt(), nParticles);
+      }
     }
   }
 };
 
-WorkflowSpec defineDataProcessing(ConfigContext const& cfgc) { return WorkflowSpec{adaptAnalysisTask<MCGeneratorStudies>(cfgc, TaskName{"mc-generator-studies"})}; }
+WorkflowSpec defineDataProcessing(ConfigContext const& context) { return WorkflowSpec{adaptAnalysisTask<MCGeneratorStudies>(context, TaskName{"mc-generator-studies"})}; }

@@ -12,38 +12,34 @@
 /// \author Alberto Caliva (alberto.caliva@cern.ch)
 /// \since August 22, 2024
 
-#include <vector>
+#include "Common/DataModel/EventSelection.h"
+#include "Common/DataModel/PIDResponseTOF.h"
+#include "Common/DataModel/PIDResponseTPC.h"
+#include "Common/DataModel/TrackSelectionTables.h"
+
+#include <Framework/ASoA.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TLorentzVector.h>
 #include <TMath.h>
-#include <TPDGCode.h>
-#include <TRandom.h>
 #include <TVector2.h>
 #include <TVector3.h>
-#include <TLorentzVector.h>
-#include <TDatabasePDG.h>
-#include "Framework/runDataProcessing.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/ASoA.h"
-#include "Framework/ASoAHelpers.h"
-#include "Framework/HistogramRegistry.h"
-#include "Framework/RunningWorkflowInfo.h"
-#include "Framework/DataTypes.h"
-#include "ReconstructionDataFormats/Track.h"
-#include "ReconstructionDataFormats/PID.h"
-#include "ReconstructionDataFormats/DCA.h"
-#include "Common/Core/trackUtilities.h"
-#include "Common/Core/TrackSelection.h"
-#include "Common/DataModel/TrackSelectionTables.h"
-#include "Common/DataModel/EventSelection.h"
-#include "Common/DataModel/Centrality.h"
-#include "Common/DataModel/PIDResponse.h"
+
+#include <cstdlib>
+#include <vector>
 
 using namespace std;
 using namespace o2;
 using namespace o2::framework;
 using namespace o2::framework::expressions;
 using namespace o2::constants::physics;
-using std::array;
 
 using SelectedCollisions = soa::Join<aod::Collisions, aod::EvSels>;
 using SimCollisions = soa::Join<aod::Collisions, aod::EvSels, aod::McCollisionLabels>;
@@ -240,7 +236,7 @@ struct nuclei_in_toward_transv_regions {
     int i = -1;
 
     // Loop over Reconstructed Tracks
-    for (auto track : tracks) {
+    for (const auto& track : tracks) {
 
       i++;
       if (!passedTrackSelectionForJetReconstruction(track))
@@ -260,7 +256,7 @@ struct nuclei_in_toward_transv_regions {
     auto const& leading_track = tracks.iteratorAt(leading_ID);
 
     // Loop over Reconstructed Tracks
-    for (auto track : tracks) {
+    for (const auto& track : tracks) {
 
       // Track Selection
       if (!passedTrackSelection(track))
@@ -323,7 +319,7 @@ struct nuclei_in_toward_transv_regions {
       int i = -1;
 
       // Loop over Reconstructed Tracks
-      for (auto track : tracks_per_coll) {
+      for (const auto& track : tracks_per_coll) {
 
         i++;
         if (!passedTrackSelectionForJetReconstruction(track))
@@ -342,7 +338,7 @@ struct nuclei_in_toward_transv_regions {
       auto const& leading_track = tracks_per_coll.iteratorAt(leading_ID);
 
       // Loop over Reconstructed Tracks
-      for (auto track : tracks_per_coll) {
+      for (const auto& track : tracks_per_coll) {
 
         if (!passedTrackSelection(track))
           continue;

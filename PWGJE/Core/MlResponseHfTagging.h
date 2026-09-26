@@ -16,26 +16,27 @@
 #ifndef PWGJE_CORE_MLRESPONSEHFTAGGING_H_
 #define PWGJE_CORE_MLRESPONSEHFTAGGING_H_
 
-#include <map>
-#include <string>
-#include <vector>
-
 #include "Tools/ML/MlResponse.h"
-#include "PWGJE/Core/JetTaggingUtilities.h"
 
-#if __has_include(<onnxruntime/core/session/onnxruntime_cxx_api.h>)
-#include <onnxruntime/core/session/experimental_onnxruntime_cxx_api.h>
-#else
+#include <Framework/Logger.h>
+
+#include <onnxruntime_c_api.h>
 #include <onnxruntime_cxx_api.h>
-#endif
+
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <utility>
+#include <vector>
 
 // Fill the map of available input features
 // the key is the feature's name (std::string)
 // the value is the corresponding value in EnumInputFeatures
-#define FILL_MAP_BJET(FEATURE)                                 \
-  {                                                            \
-    #FEATURE, static_cast<uint8_t>(InputFeaturesBTag::FEATURE) \
-  }
+#define FILL_MAP_BJET(FEATURE) \
+  {                            \
+    #FEATURE, static_cast<uint8_t>(InputFeaturesBTag::FEATURE)}
 
 // Check if the index of mCachedIndices (index associated to a FEATURE)
 // matches the entry in EnumInputFeatures associated to this FEATURE
@@ -209,7 +210,7 @@ class MlResponseHfTagging : public MlResponse<TypeOutputScore>
   static int replaceNaN(std::vector<T>& vec, T value)
   {
     int numNaN = 0;
-    for (auto& el : vec) {
+    for (auto& el : vec) { // o2-linter: disable=const-ref-in-for-loop
       if (std::isnan(el) || std::isinf(el)) {
         el = value;
         ++numNaN;
@@ -329,25 +330,18 @@ class MlResponseHfTagging : public MlResponse<TypeOutputScore>
 class TensorAllocator
 {
  protected:
-#if !__has_include(<onnxruntime/core/session/onnxruntime_cxx_api.h>)
   Ort::MemoryInfo memInfo;
-#endif
+
  public:
   TensorAllocator()
-#if !__has_include(<onnxruntime/core/session/onnxruntime_cxx_api.h>)
     : memInfo(Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeDefault))
-#endif
   {
   }
   ~TensorAllocator() = default;
   template <typename T>
   Ort::Value createTensor(std::vector<T>& input, std::vector<int64_t>& inputShape)
   {
-#if __has_include(<onnxruntime/core/session/onnxruntime_cxx_api.h>)
-    return Ort::Experimental::Value::CreateTensor<T>(input.data(), input.size(), inputShape);
-#else
     return Ort::Value::CreateTensor<T>(memInfo, input.data(), input.size(), inputShape.data(), inputShape.size());
-#endif
   }
 };
 
@@ -368,18 +362,20 @@ class GNNBjetAllocator : public TensorAllocator
 
   std::vector<std::vector<int64_t>> edgesList;
 
+  std::function<float(float)> tfFunc;
+
   // Jet feature normalization
   template <typename T>
   T jetFeatureTransform(T feat, int idx) const
   {
-    return (feat - tfJetMean[idx]) / tfJetStdev[idx];
+    return tfFunc((feat - tfJetMean[idx]) / tfJetStdev[idx]);
   }
 
   // Track feature normalization
   template <typename T>
   T trkFeatureTransform(T feat, int idx) const
   {
-    return (feat - tfTrkMean[idx]) / tfTrkStdev[idx];
+    return tfFunc((feat - tfTrkMean[idx]) / tfTrkStdev[idx]);
   }
 
   // Edge input of GNN (fully-connected graph)
@@ -426,15 +422,22 @@ class GNNBjetAllocator : public TensorAllocator
   }
 
  public:
-  GNNBjetAllocator() : TensorAllocator(), nJetFeat(4), nTrkFeat(13), nFlav(3), nTrkOrigin(5), maxNNodes(40) {}
-  GNNBjetAllocator(int64_t nJetFeat, int64_t nTrkFeat, int64_t nFlav, int64_t nTrkOrigin, std::vector<float>& tfJetMean, std::vector<float>& tfJetStdev, std::vector<float>& tfTrkMean, std::vector<float>& tfTrkStdev, int64_t maxNNodes = 40)
-    : TensorAllocator(), nJetFeat(nJetFeat), nTrkFeat(nTrkFeat), nFlav(nFlav), nTrkOrigin(nTrkOrigin), maxNNodes(maxNNodes), tfJetMean(tfJetMean), tfJetStdev(tfJetStdev), tfTrkMean(tfTrkMean), tfTrkStdev(tfTrkStdev)
+  GNNBjetAllocator() : TensorAllocator(), nJetFeat(4), nTrkFeat(13), nFlav(3), nTrkOrigin(5), maxNNodes(40), tfFunc([](float x) { return x; }) {}
+  GNNBjetAllocator(int64_t nJetFeat, int64_t nTrkFeat, int64_t nFlav, int64_t nTrkOrigin, std::vector<float>& tfJetMean, std::vector<float>& tfJetStdev, std::vector<float>& tfTrkMean, std::vector<float>& tfTrkStdev, int64_t maxNNodes = 40, const std::string& tfFuncType = "linear")
+    : TensorAllocator(), nJetFeat(nJetFeat), nTrkFeat(nTrkFeat), nFlav(nFlav), nTrkOrigin(nTrkOrigin), maxNNodes(maxNNodes), tfJetMean(tfJetMean), tfJetStdev(tfJetStdev), tfTrkMean(tfTrkMean), tfTrkStdev(tfTrkStdev), tfFunc([](float x) { return x; })
   {
+    if (tfFuncType == "asinh") {
+      tfFunc = [](float x) { return std::asinh(x); };
+    } else if (tfFuncType == "tanh") {
+      tfFunc = [](float x) { return std::tanh(x); };
+    } else {
+      tfFunc = [](float x) { return x; };
+    }
     setEdgesList();
   }
   ~GNNBjetAllocator() = default;
 
-  // Copy operator for initializing GNNBjetAllocator using Configurable values
+  // Copy operator for initializing GNNBjetAllocator using o2::framework::Configurable values
   GNNBjetAllocator& operator=(const GNNBjetAllocator& other)
   {
     nJetFeat = other.nJetFeat;
@@ -446,6 +449,8 @@ class GNNBjetAllocator : public TensorAllocator
     tfJetStdev = other.tfJetStdev;
     tfTrkMean = other.tfTrkMean;
     tfTrkStdev = other.tfTrkStdev;
+    tfFunc = other.tfFunc;
+    edgesList.clear();
     setEdgesList();
     return *this;
   }

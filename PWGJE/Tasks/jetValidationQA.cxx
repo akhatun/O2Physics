@@ -12,18 +12,23 @@
 /// \author Johanna Lömker <johanna.lomker@cern.ch>
 //  \since Dec 2022
 
-#include "Framework/runDataProcessing.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/ASoA.h"
-#include "Framework/HistogramRegistry.h"
-
-#include "PWGJE/DataModel/Jet.h"
 #include "PWGJE/Core/JetDerivedDataUtilities.h"
+#include "PWGJE/DataModel/Jet.h"
+#include "PWGJE/DataModel/JetReducedData.h"
 
-#include "Common/DataModel/EventSelection.h"
-#include "Common/Core/TrackSelection.h"
-#include "Common/Core/TrackSelectionDefaults.h"
+#include "Common/DataModel/TrackSelectionTables.h"
+
+#include <Framework/ASoA.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/runDataProcessing.h>
+
+#include <cmath>
+#include <string>
 
 using namespace o2;
 using namespace o2::framework;
@@ -405,7 +410,7 @@ struct mcJetTrackCollisionQa {
 
   // fill qa histograms for selected tracks in collision
   template <class ValidationTracks, typename coll>
-  void fillMcTrackHistos(ValidationTracks const& mct, coll collision, bool mc) // could give collision as argument for additional association
+  void fillMcTrackHistos(ValidationTracks const& mct, const coll& collision, bool mc) // could give collision as argument for additional association
   {
     for (const auto& track : mct) {
       if (!jetderiveddatautilities::selectTrack(track, trackSelection) || !(track.collisionId() == collision.globalIndex())) {
@@ -491,7 +496,7 @@ struct mcJetTrackCollisionQa {
       for (const auto& genJet : mcPartJets) {
         if (genJet.mcCollisionId() == collision.globalIndex()) {
           fillMcPartJets(genJet);
-          for (auto& mcParticle : genJet.tracks_as<aod::JetParticles>()) {
+          for (const auto& mcParticle : genJet.tracks_as<aod::JetParticles>()) {
             fillMcPartJetConstituents(mcParticle);
           }
         }
@@ -501,7 +506,7 @@ struct mcJetTrackCollisionQa {
     for (const auto& detJet : mcDetJets) {
       if (detJet.collisionId() == collision.globalIndex()) {
         fillMcDetJets(detJet);
-        for (auto& detConst : detJet.tracks_as<MCTracksJE>()) {
+        for (const auto& detConst : detJet.tracks_as<MCTracksJE>()) {
           fillMcDetJetConstituents(detConst);
         }
       }
@@ -525,7 +530,7 @@ struct mcJetTrackCollisionQa {
       for (const auto& genJet : mcPartJets) {
         if (genJet.mcCollisionId() == collision.globalIndex()) {
           fillMcPartJets(genJet);
-          for (auto& mcParticle : genJet.tracks_as<aod::JetParticles>()) {
+          for (const auto& mcParticle : genJet.tracks_as<aod::JetParticles>()) {
             fillMcPartJetConstituents(mcParticle);
           }
         }
@@ -535,7 +540,7 @@ struct mcJetTrackCollisionQa {
     for (const auto& detJet : mcDetJets) {
       if (detJet.collisionId() == collision.globalIndex()) {
         fillMcDetJets(detJet);
-        for (auto& detConst : detJet.tracks_as<MCTracksJE>()) {
+        for (const auto& detConst : detJet.tracks_as<MCTracksJE>()) {
           fillMcDetJetConstituents(detConst);
         }
       }

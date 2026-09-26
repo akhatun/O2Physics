@@ -12,44 +12,53 @@
 //
 // Analysis task for calculating single electron and dielectron efficiency
 //
-#include <iostream>
-#include <vector>
-#include <TMath.h>
-#include <TH1F.h>
+#include "PWGDQ/Core/AnalysisCompositeCut.h"
+#include "PWGDQ/Core/AnalysisCut.h"
+#include "PWGDQ/Core/CutsLibrary.h"
+#include "PWGDQ/Core/HistogramManager.h"
+#include "PWGDQ/Core/HistogramsLibrary.h"
+#include "PWGDQ/Core/MCSignal.h"
+#include "PWGDQ/Core/MCSignalLibrary.h"
+#include "PWGDQ/Core/VarManager.h"
+#include "PWGDQ/DataModel/ReducedInfoTables.h"
+#include "PWGEM/Dilepton/DataModel/dileptonTables.h"
+
+#include "Common/DataModel/EventSelection.h"
+#include "Common/DataModel/PIDResponseTOF.h"
+#include "Common/DataModel/PIDResponseTPC.h"
+#include "Common/DataModel/TrackSelectionTables.h"
+
+#include <CCDB/BasicCCDBManager.h>
+#include <DataFormatsParameters/GRPMagField.h>
+#include <Framework/ASoA.h>
+#include <Framework/ASoAHelpers.h>
+#include <Framework/AnalysisDataModel.h>
+#include <Framework/AnalysisHelpers.h>
+#include <Framework/AnalysisTask.h>
+#include <Framework/Configurable.h>
+#include <Framework/HistogramRegistry.h>
+#include <Framework/HistogramSpec.h>
+#include <Framework/InitContext.h>
+#include <Framework/OutputObjHeader.h>
+#include <Framework/runDataProcessing.h>
+
+#include <TH1.h>
+#include <TH2.h>
+#include <TH3.h>
 #include <THashList.h>
 #include <TLorentzVector.h>
 #include <TString.h>
-#include "CCDB/BasicCCDBManager.h"
-#include "DataFormatsParameters/GRPObject.h"
-#include "Framework/runDataProcessing.h"
-#include "Framework/AnalysisTask.h"
-#include "Framework/AnalysisDataModel.h"
-#include "Framework/ASoAHelpers.h"
-#include "Framework/ASoA.h"
-#include "Framework/DataTypes.h"
-#include "Framework/HistogramRegistry.h"
-#include "PWGDQ/Core/VarManager.h"
-#include "PWGDQ/Core/HistogramManager.h"
-#include "PWGDQ/Core/AnalysisCut.h"
-#include "PWGDQ/Core/AnalysisCompositeCut.h"
-#include "PWGDQ/Core/HistogramsLibrary.h"
-#include "PWGDQ/Core/CutsLibrary.h"
-#include "PWGDQ/Core/MCSignal.h"
-#include "PWGDQ/Core/MCSignalLibrary.h"
-#include "PWGDQ/DataModel/ReducedInfoTables.h"
-#include "Common/DataModel/PIDResponse.h"
-#include "Common/DataModel/TrackSelectionTables.h"
-#include "Common/DataModel/Multiplicity.h"
-#include "Common/DataModel/EventSelection.h"
-#include "Common/DataModel/Centrality.h"
-#include "Common/CCDB/TriggerAliases.h"
-#include "DataFormatsParameters/GRPMagField.h"
-#include "Field/MagneticField.h"
-#include "TGeoGlobalMagField.h"
-#include "PWGEM/Dilepton/DataModel/dileptonTables.h"
 
-using std::cout;
-using std::endl;
+#include <RtypesCore.h>
+
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
 using std::string;
 
 using namespace o2;
@@ -109,7 +118,7 @@ constexpr static uint32_t gkMCEventFillMap = VarManager::ObjTypes::ReducedEventM
 constexpr static uint32_t gkTrackFillMap = VarManager::ObjTypes::ReducedTrack | VarManager::ObjTypes::ReducedTrackBarrel | VarManager::ObjTypes::ReducedTrackBarrelCov | VarManager::ObjTypes::ReducedTrackBarrelPID;
 constexpr static uint32_t gkParticleMCFillMap = VarManager::ObjTypes::ParticleMC;
 
-void DefineHistograms(HistogramManager* histMan, TString histClasses, Configurable<std::string> configVar); // defines histograms for all tasks
+void DefineHistograms(HistogramManager* histMan, const TString& histClasses, const Configurable<std::string>& configVar); // defines histograms for all tasks
 void SetBinsLinear(std::vector<double>& fBins, const double min, const double max, const unsigned int steps);
 
 struct AnalysisEventSelection {
@@ -315,7 +324,7 @@ struct AnalysisEventQa {
   {
 
     Int_t midrap = 0;
-    for (auto mctrack : groupedMCTracks) {
+    for (const auto& mctrack : groupedMCTracks) {
       if (TMath::Abs(mctrack.eta()) < 0.5 && mctrack.isPhysicalPrimary() && (TMath::Abs(mctrack.pdgCode()) == 211 || mctrack.pdgCode() == 111)) {
         midrap++;
       }
@@ -457,7 +466,7 @@ struct AnalysisTrackSelection {
   ConfigurableAxis deltaphiResBins{"deltaphiResBins", {500, -0.5f, 0.5f}, "DeltaPhi binning for resolution"};
 
   Configurable<bool> fConfigQA{"cfgQA", false, "If true, fill QA histograms"};
-  Configurable<string> fConfigAddTrackHistogram{"cfgAddTrackHistogram", "", "Comma separated list of histograms"};
+  Configurable<std::string> fConfigAddTrackHistogram{"cfgAddTrackHistogram", "", "Comma separated list of histograms"};
 
   // output lists
   OutputObj<THashList> fOutputQA{"SingleElectronQA"};
@@ -770,7 +779,7 @@ struct AnalysisTrackSelection {
   }
 
   template <uint32_t TEventFillMap, uint32_t TTrackFillMap, uint32_t TTrackMCFillMap, typename TEvents, typename TEventsMC, typename TTracks, typename TTracksMC, typename TAmbigTracks>
-  void runDataFillMore(TEvents const& events, TEventsMC eventsMC, TTracks const& tracks, TTracksMC const& tracksMC, TAmbigTracks const& ambiTracksMid)
+  void runDataFillMore(TEvents const& events, const TEventsMC& eventsMC, TTracks const& tracks, TTracksMC const& tracksMC, TAmbigTracks const& ambiTracksMid)
   {
 
     VarManager::ResetValues(0, VarManager::kNEventWiseVariables);
@@ -1027,8 +1036,8 @@ struct AnalysisTrackSelection {
               fHistManQA->FillHistClass(fHistNamesMCMatchedQA[j][i].Data(), VarManager::fgValues);
           }
         } // end loop over cuts
-      }   // end loop over MC signals
-    }     // end loop over reconstructed track belonging to the events
+      } // end loop over MC signals
+    } // end loop over reconstructed track belonging to the events
   }
 
   template <uint32_t TEventFillMap, uint32_t TTrackFillMap, typename TEvents, typename TEventsMC, typename TTracks, typename TTracksMC, typename TAmbigTracks>
@@ -1275,8 +1284,8 @@ struct AnalysisTrackSelection {
               fHistManQA->FillHistClass(fHistNamesMCMatchedQA[j][i].Data(), VarManager::fgValues);
           }
         } // end loop over cuts
-      }   // end loop over MC signals
-    }     // end loop over reconstructed track belonging to the events
+      } // end loop over MC signals
+    } // end loop over reconstructed track belonging to the events
   }
 
   void processSkimmed(soa::Filtered<MyEventsSelected> const& events, MyBarrelTracks const& tracks, ReducedMCEvents const& eventsMC, ReducedMCTracks const& tracksMC)
@@ -1601,7 +1610,7 @@ struct AnalysisSameEventPairing {
         runRecPair<TTrackFillMap>(groupedTracks, tracksMC);
       }
     } // end loop over reconstructed event
-  }   // end loop pairing function
+  } // end loop pairing function
 
   template <uint32_t TEventMCFillMap, uint32_t TTrackFillMap, typename TEventMC, typename TTracksMC>
   void runMCPairing(TEventMC const& /*eventMC*/, TTracksMC const& tracksMC)
@@ -1716,7 +1725,7 @@ struct AnalysisSameEventPairing {
         }
       }
     } // end of true pairing loop
-  }   // end runMCGen
+  } // end runMCGen
 
   template <uint32_t TTrackFillMap, typename TTracks, typename TTracksMC>
   void runRecPair(TTracks const& tracks, TTracksMC const& /*tracksMC*/)
@@ -2003,7 +2012,7 @@ WorkflowSpec defineDataProcessing(ConfigContext const& cfgc)
     adaptAnalysisTask<AnalysisSameEventPairing>(cfgc)};
 }
 
-void DefineHistograms(HistogramManager* histMan, TString histClasses, Configurable<std::string> configVar)
+void DefineHistograms(HistogramManager* histMan, const TString& histClasses, const Configurable<std::string>& configVar)
 {
   //
   // Define here the histograms for all the classes required in analysis.
